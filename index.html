@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Translation Machine</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <h1 class="logo">
+                <i class="fas fa-language"></i>
+                Translation Machine
+            </h1>
+            <button class="settings-btn" id="settingsBtn">
+                <i class="fas fa-cog"></i>
+                <span class="btn-text">Settings</span>
+            </button>
+        </div>
+    </header>
+
+    <main class="main">
+        <div class="container">
+            <!-- Upload Section -->
+            <section class="upload-section" id="uploadSection">
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-content">
+                        <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                        <h2>Upload Document</h2>
+                        <p>Support for TXT, PDF, and EPUB files</p>
+                        <input type="file" id="fileInput" accept=".txt,.pdf,.epub" hidden>
+                        <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
+                            Choose File
+                        </button>
+                        <div class="drag-text">or drag and drop here</div>
+                    </div>
+                </div>
+                
+                <div class="file-info" id="fileInfo" style="display: none;">
+                    <div class="file-details">
+                        <i class="fas fa-file-alt"></i>
+                        <div class="file-meta">
+                            <div class="file-name" id="fileName"></div>
+                            <div class="file-size" id="fileSize"></div>
+                        </div>
+                        <button class="btn-icon" id="removeFile" title="Remove file">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Configuration Section -->
+            <section class="config-section" id="configSection" style="display: none;">
+                <div class="config-grid">
+                    <div class="config-item">
+                        <label for="modelSelect">AI Model</label>
+                        <select id="modelSelect">
+                            <option value="gpt-4o-mini">GPT-4o Mini ($0.150 / 1M tokens)</option>
+                            <option value="gpt-4o">GPT-4o ($2.50 / 1M tokens)</option>
+                            <option value="gpt-4-turbo">GPT-4 Turbo ($10.00 / 1M tokens)</option>
+                        </select>
+                    </div>
+
+                    <div class="config-item">
+                        <label for="targetLang">Target Language</label>
+                        <select id="targetLang">
+                            <option value="spanish">Spanish</option>
+                            <option value="french">French</option>
+                            <option value="german">German</option>
+                            <option value="italian">Italian</option>
+                            <option value="portuguese">Portuguese</option>
+                            <option value="chinese">Chinese (Simplified)</option>
+                            <option value="japanese">Japanese</option>
+                            <option value="korean">Korean</option>
+                            <option value="russian">Russian</option>
+                            <option value="arabic">Arabic</option>
+                            <option value="hindi">Hindi</option>
+                            <option value="custom">Custom...</option>
+                        </select>
+                        <input type="text" id="customLang" placeholder="Enter target language" style="display: none;">
+                    </div>
+
+                    <div class="config-item">
+                        <label for="styleSelect">Translation Style</label>
+                        <select id="styleSelect">
+                            <option value="formal">Formal</option>
+                            <option value="conversational">Conversational</option>
+                            <option value="academic">Academic</option>
+                            <option value="creative">Creative</option>
+                            <option value="technical">Technical</option>
+                            <option value="custom">Custom...</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="prompt-section">
+                    <label for="systemPrompt">System Prompt</label>
+                    <textarea id="systemPrompt" rows="4" placeholder="Custom system prompt for translation..."></textarea>
+                </div>
+
+                <div class="cost-estimate" id="costEstimate">
+                    <div class="estimate-item">
+                        <span class="label">Estimated Tokens:</span>
+                        <span class="value" id="estimatedTokens">-</span>
+                    </div>
+                    <div class="estimate-item">
+                        <span class="label">Estimated Cost:</span>
+                        <span class="value" id="estimatedCost">-</span>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary btn-large" id="translateBtn">
+                    <i class="fas fa-play"></i>
+                    Start Translation
+                </button>
+            </section>
+
+            <!-- Translation Section -->
+            <section class="translation-section" id="translationSection" style="display: none;">
+                <div class="translation-layout">
+                    <div class="progress-panel">
+                        <div class="progress-header">
+                            <h3>Translation Progress</h3>
+                            <div class="progress-actions">
+                                <button class="btn-icon" id="pauseBtn" title="Pause">
+                                    <i class="fas fa-pause"></i>
+                                </button>
+                                <button class="btn-icon" id="resumeBtn" title="Resume" style="display: none;">
+                                    <i class="fas fa-play"></i>
+                                </button>
+                                <button class="btn-icon" id="stopBtn" title="Stop">
+                                    <i class="fas fa-stop"></i>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressFill"></div>
+                            <span class="progress-text" id="progressText">0%</span>
+                        </div>
+
+                        <div class="progress-stats">
+                            <div class="stat-item">
+                                <span class="label">Tokens Used:</span>
+                                <span class="value" id="tokensUsed">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="label">Cost So Far:</span>
+                                <span class="value" id="costSoFar">$0.00</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="label">Chunks:</span>
+                                <span class="value" id="chunksProgress">0 / 0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="preview-panel">
+                        <div class="preview-header">
+                            <h3>Translation Preview</h3>
+                            <div class="preview-actions">
+                                <button class="btn btn-secondary" id="exportTxtBtn">
+                                    <i class="fas fa-download"></i>
+                                    Export TXT
+                                </button>
+                                <button class="btn btn-secondary" id="exportDocxBtn">
+                                    <i class="fas fa-file-word"></i>
+                                    Export DOCX
+                                </button>
+                            </div>
+                        </div>
+                        <div class="preview-content" id="previewContent">
+                            <div class="preview-placeholder">
+                                Translation will appear here...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Settings Modal -->
+    <div class="modal" id="settingsModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Settings</h2>
+                <button class="btn-icon" id="closeSettingsBtn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="setting-item">
+                    <label for="apiKey">OpenAI API Key</label>
+                    <div class="input-group">
+                        <input type="password" id="apiKey" placeholder="Enter your OpenAI API key">
+                        <button class="btn-icon" id="toggleApiKey" title="Show/Hide">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                    <small class="help-text">Your API key is stored locally and never sent to our servers.</small>
+                </div>
+                
+                <div class="setting-item">
+                    <label>Chunk Size</label>
+                    <select id="chunkSize">
+                        <option value="1000">Small (1000 tokens)</option>
+                        <option value="2000" selected>Medium (2000 tokens)</option>
+                        <option value="4000">Large (4000 tokens)</option>
+                    </select>
+                    <small class="help-text">Larger chunks are more efficient but may hit rate limits.</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelSettingsBtn">Cancel</button>
+                <button class="btn btn-primary" id="saveSettingsBtn">Save Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://unpkg.com/docx@8.5.0/build/index.js"></script>
+    <script src="https://unpkg.com/pizzip@3.1.6/dist/pizzip.js"></script>
+    <script src="https://unpkg.com/docxtemplater@3.42.2/build/docxtemplater.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
