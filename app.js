@@ -307,7 +307,18 @@ class TranslationMachine {
             this.showConfigSection();
         } catch (error) {
             console.error('Error processing file:', error);
-            alert('Error reading file. Please try again.');
+            
+            // Show more specific error message
+            let errorMessage = 'Error reading file:\n\n' + error.message;
+            
+            if (error.message.includes('PDF.js library not loaded')) {
+                errorMessage += '\n\nPlease refresh the page and try again.';
+            }
+            
+            alert(errorMessage);
+            
+            // Reset file selection
+            this.removeFile();
         }
     }
 
@@ -338,34 +349,84 @@ class TranslationMachine {
 
     async extractPdfText(file) {
         return new Promise((resolve, reject) => {
+            // Check if PDF.js is available
+            if (typeof pdfjsLib === 'undefined') {
+                reject(new Error('PDF.js library not loaded. Please refresh the page and try again.'));
+                return;
+            }
+
             const reader = new FileReader();
             reader.onload = async function(e) {
                 try {
                     const typedarray = new Uint8Array(e.target.result);
                     
-                    // Configure PDF.js worker
-                    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+                    // Configure PDF.js worker with fallback
+                    if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+                        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+                    }
                     
-                    const pdf = await pdfjsLib.getDocument(typedarray).promise;
+                    console.log('Loading PDF with', typedarray.length, 'bytes');
+                    
+                    const loadingTask = pdfjsLib.getDocument({
+                        data: typedarray,
+                        cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
+                        cMapPacked: true
+                    });
+                    
+                    const pdf = await loadingTask.promise;
+                    console.log('PDF loaded successfully, pages:', pdf.numPages);
+                    
                     let fullText = '';
                     
                     // Extract text from each page
                     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-                        const page = await pdf.getPage(pageNum);
-                        const textContent = await page.getTextContent();
-                        const pageText = textContent.items.map(item => item.str).join(' ');
-                        fullText += pageText + '\n\n';
+                        try {
+                            const page = await pdf.getPage(pageNum);
+                            const textContent = await page.getTextContent();
+                            const pageText = textContent.items
+                                .map(item => item.str)
+                                .join(' ')
+                                .replace(/\s+/g, ' ')
+                                .trim();
+                            
+                            if (pageText) {
+                                fullText += pageText + '\n\n';
+                                console.log(`Page ${pageNum}: ${pageText.length} characters extracted`);
+                            }
+                        } catch (pageError) {
+                            console.warn(`Error extracting text from page ${pageNum}:`, pageError);
+                            // Continue with other pages
+                        }
                     }
                     
                     if (!fullText.trim()) {
-                        reject(new Error('No text found in PDF. The PDF may contain only images or be password protected.'));
+                        reject(new Error('No text found in PDF. This could mean:\n• The PDF contains only images/scanned content\n• The PDF is password protected\n• The PDF uses unsupported fonts\n\nTry converting the PDF to text first, or use a TXT file instead.'));
                     } else {
+                        console.log('PDF text extraction completed:', fullText.length, 'characters');
                         resolve(fullText.trim());
                     }
                 } catch (error) {
-                    reject(new Error(`Error parsing PDF: ${error.message}`));
+                    console.error('PDF parsing error:', error);
+                    let errorMessage = 'Error parsing PDF: ';
+                    
+                    if (error.message.includes('Invalid PDF')) {
+                        errorMessage += 'The file appears to be corrupted or not a valid PDF.';
+                    } else if (error.message.includes('Password')) {
+                        errorMessage += 'This PDF is password protected.';
+                    } else if (error.message.includes('NetworkError') || error.message.includes('fetch')) {
+                        errorMessage += 'Could not load PDF.js library. Please check your internet connection and try again.';
+                    } else {
+                        errorMessage += error.message || 'Unknown error occurred.';
+                    }
+                    
+                    reject(new Error(errorMessage));
                 }
             };
+            
+            reader.onerror = function() {
+                reject(new Error('Could not read the file. Please try again with a different PDF.'));
+            };
+            
             reader.readAsArrayBuffer(file);
         });
     }
