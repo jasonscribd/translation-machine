@@ -837,42 +837,91 @@ class TranslationMachine {
     }
 
     async processChunks() {
-        for (let i = this.translationState.currentChunk; i < this.translationState.chunks.length; i++) {
+        const totalChunks = this.translationState.chunks.length;
+        console.log(`Starting translation of ${totalChunks} chunks`);
+        
+        for (let i = this.translationState.currentChunk; i < totalChunks; i++) {
             if (!this.translationState.isRunning) break;
             
             while (this.translationState.isPaused) {
                 await this.sleep(100);
             }
             
-            try {
-                const result = await this.translateChunk(this.translationState.chunks[i]);
-                this.translationState.results[i] = result.text;
-                this.translationState.tokensUsed += result.tokensUsed;
-                this.translationState.costSoFar += result.cost;
-                this.translationState.currentChunk = i + 1;
-                
-                this.updateProgress();
-                this.updatePreview();
-                
-                // Save progress every few chunks
-                if ((i + 1) % 3 === 0) {
-                    await this.saveSession();
+            console.log(`Processing chunk ${i + 1}/${totalChunks}`);
+            console.log('Chunk content preview:', this.translationState.chunks[i].substring(0, 100) + '...');
+            
+            let retryCount = 0;
+            const maxRetries = 3;
+            let success = false;
+            
+            while (!success && retryCount < maxRetries && this.translationState.isRunning) {
+                try {
+                    const result = await this.translateChunk(this.translationState.chunks[i]);
+                    this.translationState.results[i] = result.text;
+                    this.translationState.tokensUsed += result.tokensUsed;
+                    this.translationState.costSoFar += result.cost;
+                    this.translationState.currentChunk = i + 1;
+                    
+                    console.log(`Chunk ${i + 1} translated successfully. Result preview:`, result.text.substring(0, 100) + '...');
+                    
+                    success = true;
+                    
+                    this.updateProgress();
+                    this.updatePreview();
+                    
+                    // Save progress every few chunks
+                    if ((i + 1) % 3 === 0) {
+                        await this.saveSession();
+                    }
+                    
+                } catch (error) {
+                    retryCount++;
+                    console.error(`Translation error for chunk ${i + 1} (attempt ${retryCount}):`, error);
+                    
+                    if (error.message.includes('rate limit') || error.message.includes('Rate limit')) {
+                        const waitTime = Math.min(5000 * retryCount, 30000); // Wait 5s, 10s, 15s...
+                        console.log(`Rate limited. Waiting ${waitTime/1000} seconds before retry...`);
+                        await this.sleep(waitTime);
+                    } else if (error.message.includes('max_tokens')) {
+                        // If still hitting token limits, mark chunk as failed and continue
+                        console.error(`Token limit error on chunk ${i + 1}, marking as failed`);
+                        this.translationState.results[i] = `[TRANSLATION FAILED - CHUNK TOO LARGE: ${this.translationState.chunks[i].substring(0, 200)}...]`;
+                        success = true; // Don't retry token limit errors
+                    } else if (retryCount >= maxRetries) {
+                        console.error(`Failed to translate chunk ${i + 1} after ${maxRetries} attempts`);
+                        this.translationState.results[i] = `[TRANSLATION FAILED: ${this.translationState.chunks[i].substring(0, 200)}...]`;
+                        success = true; // Move on to next chunk
+                    } else {
+                        // Wait before retry for other errors
+                        await this.sleep(1000 * retryCount);
+                    }
                 }
-                
-            } catch (error) {
-                console.error('Translation error:', error);
-                // Handle rate limiting or other errors
-                if (error.message.includes('rate limit')) {
-                    await this.sleep(2000);
-                    i--; // Retry the same chunk
-                } else {
-                    alert('Translation error: ' + error.message);
-                    break;
-                }
+            }
+            
+            if (!success) {
+                console.error(`Chunk ${i + 1} failed completely, inserting original text`);
+                this.translationState.results[i] = `[UNTRANSLATED: ${this.translationState.chunks[i]}]`;
             }
         }
         
-        if (this.translationState.currentChunk >= this.translationState.chunks.length) {
+        // Verify all chunks have results
+        console.log('Translation complete. Verifying results...');
+        const missingChunks = [];
+        for (let i = 0; i < totalChunks; i++) {
+            if (!this.translationState.results[i]) {
+                missingChunks.push(i + 1);
+                this.translationState.results[i] = `[MISSING TRANSLATION: ${this.translationState.chunks[i]}]`;
+            }
+        }
+        
+        if (missingChunks.length > 0) {
+            console.warn('Missing translations for chunks:', missingChunks);
+        }
+        
+        console.log('Final results array length:', this.translationState.results.length);
+        console.log('Expected chunks:', totalChunks);
+        
+        if (this.translationState.currentChunk >= totalChunks) {
             await this.completeTranslation();
         }
     }
@@ -937,14 +986,40 @@ class TranslationMachine {
 
     updatePreview() {
         const preview = document.getElementById('previewContent');
-        const translatedText = this.translationState.results
-            .filter(result => result)
-            .join('\n\n');
+        const totalChunks = this.translationState.chunks.length;
+        const completedChunks = this.translationState.results.filter(result => result).length;
         
-        if (translatedText) {
-            preview.innerHTML = `<div style="white-space: pre-wrap; line-height: 1.6;">${this.escapeHtml(translatedText)}</div>`;
+        // Combine all results, including placeholders for missing chunks
+        const allResults = [];
+        for (let i = 0; i < totalChunks; i++) {
+            if (this.translationState.results[i]) {
+                allResults.push(this.translationState.results[i]);
+            } else {
+                allResults.push(`[Processing chunk ${i + 1}...]`);
+            }
+        }
+        
+        const combinedText = allResults.join('\n\n');
+        
+        if (combinedText) {
+            let previewHtml = `<div style="white-space: pre-wrap; line-height: 1.6;">${this.escapeHtml(combinedText)}</div>`;
+            
+            // Add summary at the top if translation is in progress
+            if (completedChunks < totalChunks) {
+                const summaryHtml = `
+                    <div style="background: var(--background-color); padding: 1rem; margin-bottom: 1rem; border-radius: var(--radius-md); border-left: 4px solid var(--primary-color);">
+                        <strong>Translation Progress:</strong> ${completedChunks}/${totalChunks} chunks completed
+                        <br><small>Scroll down to see translated content as it appears...</small>
+                    </div>
+                `;
+                previewHtml = summaryHtml + previewHtml;
+            }
+            
+            preview.innerHTML = previewHtml;
             preview.scrollTop = preview.scrollHeight;
         }
+        
+        console.log(`Preview updated: ${completedChunks}/${totalChunks} chunks completed`);
     }
 
     async completeTranslation() {
@@ -955,12 +1030,128 @@ class TranslationMachine {
         // Save final session state
         await this.saveSession();
         
-        // Show success message
+        // Analyze translation completeness
+        const totalChunks = this.translationState.chunks.length;
+        const successfulChunks = this.translationState.results.filter(result => 
+            result && !result.startsWith('[TRANSLATION FAILED') && !result.startsWith('[UNTRANSLATED') && !result.startsWith('[MISSING TRANSLATION')
+        ).length;
+        const failedChunks = totalChunks - successfulChunks;
+        
+        console.log(`Translation complete: ${successfulChunks}/${totalChunks} chunks successful, ${failedChunks} failed`);
+        
+        // Show completion message
         const preview = document.getElementById('previewContent');
-        const successBanner = document.createElement('div');
-        successBanner.style.cssText = 'background: var(--success-color); color: white; padding: 1rem; margin-bottom: 1rem; border-radius: var(--radius-md); text-align: center;';
-        successBanner.innerHTML = '<i class="fas fa-check-circle"></i> Translation completed successfully!';
-        preview.insertBefore(successBanner, preview.firstChild);
+        const completionBanner = document.createElement('div');
+        
+        if (failedChunks === 0) {
+            completionBanner.style.cssText = 'background: var(--success-color); color: white; padding: 1rem; margin-bottom: 1rem; border-radius: var(--radius-md); text-align: center;';
+            completionBanner.innerHTML = '<i class="fas fa-check-circle"></i> Translation completed successfully! All content translated.';
+        } else {
+            completionBanner.style.cssText = 'background: var(--warning-color); color: white; padding: 1rem; margin-bottom: 1rem; border-radius: var(--radius-md);';
+            completionBanner.innerHTML = `
+                <div style="text-align: center; margin-bottom: 1rem;">
+                    <i class="fas fa-exclamation-triangle"></i> Translation completed with issues: ${successfulChunks}/${totalChunks} chunks translated successfully. ${failedChunks} chunks failed.
+                </div>
+                <div style="text-align: center;">
+                    <button class="btn btn-secondary" onclick="window.translationMachine.retryFailedChunks()" style="margin-right: 0.5rem;">
+                        <i class="fas fa-redo"></i> Retry Failed Chunks
+                    </button>
+                    <button class="btn btn-secondary" onclick="window.translationMachine.exportWithWarnings()">
+                        <i class="fas fa-download"></i> Export Partial Translation
+                    </button>
+                </div>
+            `;
+        }
+        
+        preview.insertBefore(completionBanner, preview.firstChild);
+        
+        // Final preview update to remove processing placeholders
+        this.updateFinalPreview();
+    }
+
+    updateFinalPreview() {
+        const preview = document.getElementById('previewContent');
+        const translatedText = this.translationState.results.join('\n\n');
+        
+        // Create final content with completion banner preserved
+        const completionBanner = preview.querySelector('div[style*="background: var(--success-color)"], div[style*="background: var(--warning-color)"]');
+        
+        const finalContent = `<div style="white-space: pre-wrap; line-height: 1.6;">${this.escapeHtml(translatedText)}</div>`;
+        
+        if (completionBanner) {
+            preview.innerHTML = '';
+            preview.appendChild(completionBanner);
+            preview.innerHTML += finalContent;
+        } else {
+            preview.innerHTML = finalContent;
+        }
+        
+        console.log('Final preview updated with complete translation');
+    }
+
+    async retryFailedChunks() {
+        console.log('Retrying failed chunks...');
+        
+        const failedIndices = [];
+        for (let i = 0; i < this.translationState.results.length; i++) {
+            const result = this.translationState.results[i];
+            if (!result || result.startsWith('[TRANSLATION FAILED') || 
+                result.startsWith('[UNTRANSLATED') || result.startsWith('[MISSING TRANSLATION')) {
+                failedIndices.push(i);
+            }
+        }
+        
+        if (failedIndices.length === 0) {
+            alert('No failed chunks to retry');
+            return;
+        }
+        
+        console.log(`Retrying ${failedIndices.length} failed chunks:`, failedIndices);
+        
+        // Re-enable controls
+        this.translationState.isRunning = true;
+        document.getElementById('pauseBtn').style.display = 'inline-flex';
+        document.getElementById('resumeBtn').style.display = 'none';
+        
+        // Process only failed chunks
+        for (const index of failedIndices) {
+            if (!this.translationState.isRunning) break;
+            
+            console.log(`Retrying chunk ${index + 1}`);
+            
+            try {
+                const result = await this.translateChunk(this.translationState.chunks[index]);
+                this.translationState.results[index] = result.text;
+                this.translationState.tokensUsed += result.tokensUsed;
+                this.translationState.costSoFar += result.cost;
+                
+                console.log(`Chunk ${index + 1} retry successful`);
+                this.updateProgress();
+                this.updatePreview();
+                
+            } catch (error) {
+                console.error(`Retry failed for chunk ${index + 1}:`, error);
+                // Keep the existing failed marker
+            }
+            
+            // Small delay between retries
+            await this.sleep(1000);
+        }
+        
+        // Complete translation again
+        await this.completeTranslation();
+    }
+
+    exportWithWarnings() {
+        const successfulChunks = this.translationState.results.filter(result => 
+            result && !result.startsWith('[TRANSLATION FAILED') && 
+            !result.startsWith('[UNTRANSLATED') && !result.startsWith('[MISSING TRANSLATION')
+        ).length;
+        const totalChunks = this.translationState.chunks.length;
+        
+        if (confirm(`Export partial translation? ${successfulChunks}/${totalChunks} chunks were successfully translated. Failed sections will be marked in the export.`)) {
+            this.exportTxt();
+        }
     }
 
     async pauseTranslation() {
@@ -989,12 +1180,16 @@ class TranslationMachine {
     }
 
     async exportTxt() {
-        const text = this.translationState.results
-            .filter(result => result)
-            .join('\n\n');
+        if (!this.translationState.results || this.translationState.results.length === 0) {
+            alert('No translation results to export');
+            return;
+        }
+
+        // Combine all results, including failed ones with markers
+        const text = this.translationState.results.join('\n\n');
         
         if (!text) {
-            alert('No translated text to export');
+            alert('No content to export');
             return;
         }
 
@@ -1003,12 +1198,16 @@ class TranslationMachine {
     }
 
     async exportDocx() {
-        const text = this.translationState.results
-            .filter(result => result)
-            .join('\n\n');
+        if (!this.translationState.results || this.translationState.results.length === 0) {
+            alert('No translation results to export');
+            return;
+        }
+
+        // Combine all results, including failed ones with markers
+        const text = this.translationState.results.join('\n\n');
         
         if (!text) {
-            alert('No translated text to export');
+            alert('No content to export');
             return;
         }
 

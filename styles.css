@@ -526,6 +526,23 @@ body {
     padding: var(--spacing-2xl);
 }
 
+/* Completion banner buttons */
+.preview-content button {
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: var(--radius-md);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.preview-content button:hover {
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.5);
+}
+
 /* Modal */
 .modal {
     display: none;
