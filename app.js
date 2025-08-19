@@ -1179,21 +1179,29 @@ class TranslationMachine {
             console.log('Using corrected prompt:', systemPrompt);
         }
         
+        // Create the API request body
+        const requestBody = {
+            model: model,
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: `TRANSLATE TO ENGLISH: ${text}` }
+            ],
+            temperature: 0.1, // Lower temperature for more consistent translation
+            max_tokens: this.getMaxTokensForModel(model, text)
+        };
+
+        console.log('=== FULL API REQUEST ===');
+        console.log('Request body:', JSON.stringify(requestBody, null, 2));
+        console.log('System message:', requestBody.messages[0].content);
+        console.log('User message preview:', requestBody.messages[1].content.substring(0, 100) + '...');
+        
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${this.apiKey}`
             },
-            body: JSON.stringify({
-                model: model,
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: text }
-                ],
-                temperature: 0.3,
-                max_tokens: this.getMaxTokensForModel(model, text)
-            })
+            body: JSON.stringify(requestBody)
         });
 
         if (!response.ok) {
@@ -1205,22 +1213,48 @@ class TranslationMachine {
         const usage = data.usage;
         const pricing = this.modelPricing[model];
         
-        const translatedText = data.choices[0].message.content;
-        console.log('Translation result (first 200 chars):', translatedText.substring(0, 200) + '...');
+        console.log('=== FULL API RESPONSE ===');
+        console.log('Complete response:', JSON.stringify(data, null, 2));
+        console.log('Response finish reason:', data.choices[0].finish_reason);
         
-        // Check if the result looks like it's still in Portuguese (basic heuristic)
-        const portugueseWords = ['que', 'para', 'com', 'uma', 'como', 'mais', 'por', 'não', 'dos', 'da', 'de', 'do'];
-        const englishWords = ['the', 'and', 'for', 'are', 'with', 'this', 'that', 'from', 'they', 'have'];
+        const translatedText = data.choices[0].message.content;
+        console.log('=== TRANSLATION ANALYSIS ===');
+        console.log('Translation result (first 300 chars):', translatedText.substring(0, 300) + '...');
+        console.log('Full translation length:', translatedText.length, 'characters');
+        
+        // Enhanced language detection with more comprehensive word lists
+        const portugueseWords = ['que', 'para', 'com', 'uma', 'como', 'mais', 'por', 'não', 'dos', 'da', 'de', 'do', 'ser', 'ter', 'este', 'essa', 'fazer', 'dizer', 'muito', 'sobre'];
+        const englishWords = ['the', 'and', 'for', 'are', 'with', 'this', 'that', 'from', 'they', 'have', 'will', 'would', 'could', 'should', 'there', 'their', 'these', 'those', 'when', 'where'];
         
         const lowerText = translatedText.toLowerCase();
-        const portugueseCount = portugueseWords.filter(word => lowerText.includes(' ' + word + ' ')).length;
-        const englishCount = englishWords.filter(word => lowerText.includes(' ' + word + ' ')).length;
+        const portugueseMatches = portugueseWords.filter(word => {
+            const regex = new RegExp(`\\b${word}\\b`, 'g');
+            return regex.test(lowerText);
+        });
+        const englishMatches = englishWords.filter(word => {
+            const regex = new RegExp(`\\b${word}\\b`, 'g');
+            return regex.test(lowerText);
+        });
         
-        console.log('Language detection - Portuguese indicators:', portugueseCount, 'English indicators:', englishCount);
+        console.log('Portuguese words found:', portugueseMatches.length, portugueseMatches);
+        console.log('English words found:', englishMatches.length, englishMatches);
         
-        if (portugueseCount > englishCount && portugueseCount > 2) {
-            console.warn('WARNING: Translation result appears to still be in Portuguese!');
-            console.warn('This suggests the system prompt may not be working correctly');
+        const confidence = englishMatches.length / (englishMatches.length + portugueseMatches.length) * 100;
+        console.log('English confidence:', confidence.toFixed(1) + '%');
+        
+        if (portugueseMatches.length > englishMatches.length && portugueseMatches.length > 2) {
+            console.error('🚨 CRITICAL: Translation result is in Portuguese!');
+            console.error('Portuguese words detected:', portugueseMatches);
+            console.error('This means OpenAI is completely ignoring our English translation request');
+            
+            // Try to force a re-translation with an even stronger prompt
+            console.warn('Attempting to force English translation...');
+            return await this.forceEnglishTranslation(text, model);
+        } else if (confidence < 70) {
+            console.warn('⚠️ WARNING: Translation confidence is low (' + confidence.toFixed(1) + '%)');
+            console.warn('Result may contain mixed languages or errors');
+        } else {
+            console.log('✅ Translation appears to be in English (confidence: ' + confidence.toFixed(1) + '%)');
         }
         
         const cost = (usage.prompt_tokens / 1000) * pricing.input + 
@@ -1231,6 +1265,86 @@ class TranslationMachine {
             tokensUsed: usage.total_tokens,
             cost: cost
         };
+    }
+
+    async forceEnglishTranslation(text, model) {
+        console.log('🔧 FORCING ENGLISH TRANSLATION - Second attempt with stronger prompt');
+        
+        // Ultra-strong system prompt
+        const forcePrompt = `CRITICAL INSTRUCTION: You MUST translate the following text to ENGLISH ONLY. 
+DO NOT respond in Portuguese, Spanish, or any other language. 
+Your response must be 100% in English language.
+You are translating FROM Portuguese TO English.
+ENGLISH OUTPUT REQUIRED. NO EXCEPTIONS.
+
+Translate this text to English:`;
+
+        // Even more explicit user message
+        const userMessage = `TRANSLATE TO ENGLISH (NOT Portuguese): ${text}
+
+IMPORTANT: Your response must be in English language only. Do not include any Portuguese text in your response.`;
+
+        const requestBody = {
+            model: model,
+            messages: [
+                { role: 'system', content: forcePrompt },
+                { role: 'user', content: userMessage }
+            ],
+            temperature: 0.0, // Maximum consistency
+            max_tokens: this.getMaxTokensForModel(model, text)
+        };
+
+        console.log('=== FORCE TRANSLATION REQUEST ===');
+        console.log('Force system prompt:', forcePrompt);
+        console.log('Force user message preview:', userMessage.substring(0, 150) + '...');
+        
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${this.apiKey}`
+            },
+            body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+            console.error('Force translation API request failed');
+            throw new Error('Force translation failed - using original Portuguese result');
+        }
+
+        const data = await response.json();
+        const translatedText = data.choices[0].message.content;
+        const usage = data.usage;
+        const pricing = this.modelPricing[model];
+        
+        console.log('=== FORCE TRANSLATION RESULT ===');
+        console.log('Forced result (first 300 chars):', translatedText.substring(0, 300) + '...');
+        
+        // Re-check if it's now in English
+        const lowerText = translatedText.toLowerCase();
+        const portugueseTest = ['que', 'para', 'com', 'uma', 'não'].some(word => 
+            new RegExp(`\\b${word}\\b`).test(lowerText)
+        );
+        
+        if (portugueseTest) {
+            console.error('🚨 FORCE TRANSLATION ALSO FAILED - OpenAI is not cooperating');
+            console.error('This is likely a model issue or API problem');
+            
+            // Last resort: add warning prefix to the Portuguese result
+            const warningText = `[WARNING: Translation failed - OpenAI returned Portuguese instead of English]\n\n${translatedText}`;
+            return {
+                text: warningText,
+                tokensUsed: usage.total_tokens,
+                cost: (usage.prompt_tokens / 1000) * pricing.input + (usage.completion_tokens / 1000) * pricing.output
+            };
+        } else {
+            console.log('✅ FORCE TRANSLATION SUCCESSFUL - Now in English');
+            return {
+                text: translatedText,
+                tokensUsed: usage.total_tokens,
+                cost: (usage.prompt_tokens / 1000) * pricing.input + (usage.completion_tokens / 1000) * pricing.output
+            };
+        }
     }
 
     updateProgress() {
