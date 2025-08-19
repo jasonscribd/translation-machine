@@ -39,6 +39,7 @@ class TranslationMachine {
         this.setupEventListeners();
         this.setupDragAndDrop();
         this.updateSystemPrompt();
+        this.setupPageUnloadHandling();
         await this.checkForSavedSessions();
     }
 
@@ -98,23 +99,36 @@ class TranslationMachine {
         }
     }
 
-    async checkForSavedSessions() {
-        if (!this.db) return;
-
-        try {
-            const transaction = this.db.transaction(['sessions'], 'readonly');
-            const store = transaction.objectStore('sessions');
-            const request = store.getAll();
-            
-            request.onsuccess = (event) => {
-                const sessions = event.target.result;
-                if (sessions.length > 0) {
-                    this.showResumeDialog(sessions);
-                }
-            };
-        } catch (error) {
-            console.warn('Failed to check for saved sessions:', error);
+    startNewTranslation() {
+        if (confirm('Start a new translation? This will clear the current document and translation.')) {
+            console.log('Starting new translation - clearing all data');
+            this.clearAllData();
+            this.hideNewTranslationButton();
         }
+    }
+
+    showNewTranslationButton() {
+        document.getElementById('newTranslationBtn').style.display = 'flex';
+    }
+
+    hideNewTranslationButton() {
+        document.getElementById('newTranslationBtn').style.display = 'none';
+    }
+
+    async checkForSavedSessions() {
+        // Check if we should clear data from a previous session
+        const shouldClear = localStorage.getItem('translation-machine-should-clear');
+        if (shouldClear === 'true') {
+            console.log('Previous session requested clear - starting fresh');
+            localStorage.removeItem('translation-machine-should-clear');
+            await this.clearSavedSessions();
+            return;
+        }
+
+        // Skip automatic session restoration for clean experience
+        // Users can manually start new translations using the "New Translation" button
+        console.log('Session auto-restore disabled for clean start experience');
+        return;
     }
 
     showResumeDialog(sessions) {
@@ -192,6 +206,100 @@ class TranslationMachine {
         return `${days} days ago`;
     }
 
+    setupPageUnloadHandling() {
+        // Clear data on page refresh or close
+        window.addEventListener('beforeunload', (e) => {
+            console.log('Page unloading - clearing data for fresh start');
+            this.clearStoredData();
+        });
+
+        // Also clear when page becomes hidden (mobile browsers)
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') {
+                console.log('Page hidden - clearing data for privacy');
+                this.clearStoredData();
+            }
+        });
+
+        // Ensure clean start on page load
+        this.ensureCleanStart();
+    }
+
+    ensureCleanStart() {
+        // Clear any session flag that indicates we should start fresh
+        localStorage.removeItem('translation-machine-should-clear');
+        console.log('Ensuring clean start - application ready for new translation');
+    }
+
+    clearStoredData() {
+        // Mark that data should be cleared on next load
+        localStorage.setItem('translation-machine-should-clear', 'true');
+        
+        // Clear saved sessions from IndexedDB immediately
+        this.clearSavedSessions();
+    }
+
+    clearAllData() {
+        console.log('Clearing all translation data for fresh start...');
+        
+        // Clear application state
+        this.currentFile = null;
+        this.currentText = '';
+        this.translationState = {
+            isRunning: false,
+            isPaused: false,
+            chunks: [],
+            currentChunk: 0,
+            results: [],
+            tokensUsed: 0,
+            costSoFar: 0,
+            sessionId: null,
+            config: null
+        };
+
+        // Clear UI state
+        this.resetUI();
+        
+        // Clear saved sessions from IndexedDB
+        this.clearSavedSessions();
+    }
+
+    resetUI() {
+        // Hide all sections except upload
+        document.getElementById('fileInfo').style.display = 'none';
+        document.getElementById('uploadArea').style.display = 'block';
+        document.getElementById('configSection').style.display = 'none';
+        document.getElementById('translationSection').style.display = 'none';
+        
+        // Clear file input
+        document.getElementById('fileInput').value = '';
+        
+        // Hide OCR progress
+        this.hideOcrProgress();
+        
+        // Reset cost estimates
+        document.getElementById('estimatedTokens').textContent = '-';
+        document.getElementById('estimatedCost').textContent = '-';
+        
+        // Reset system prompt to default
+        this.updateSystemPrompt();
+        
+        console.log('UI reset to initial state');
+    }
+
+    async clearSavedSessions() {
+        if (!this.db) return;
+        
+        try {
+            const transaction = this.db.transaction(['sessions'], 'readwrite');
+            const store = transaction.objectStore('sessions');
+            await store.clear();
+            console.log('Cleared all saved sessions from IndexedDB');
+        } catch (error) {
+            console.warn('Failed to clear saved sessions:', error);
+        }
+    }
+
     loadSettings() {
         const saved = localStorage.getItem('translation-machine-settings');
         if (saved) {
@@ -216,6 +324,9 @@ class TranslationMachine {
         document.getElementById('cancelSettingsBtn').addEventListener('click', this.closeSettings.bind(this));
         document.getElementById('saveSettingsBtn').addEventListener('click', this.saveSettingsModal.bind(this));
         document.getElementById('toggleApiKey').addEventListener('click', this.toggleApiKeyVisibility.bind(this));
+
+        // New translation button
+        document.getElementById('newTranslationBtn').addEventListener('click', this.startNewTranslation.bind(this));
 
         // File upload
         document.getElementById('fileInput').addEventListener('change', this.handleFileSelect.bind(this));
@@ -606,6 +717,7 @@ class TranslationMachine {
         document.getElementById('fileSize').textContent = this.formatFileSize(file.size);
         document.getElementById('fileInfo').style.display = 'block';
         document.getElementById('uploadArea').style.display = 'none';
+        this.showNewTranslationButton();
     }
 
     removeFile() {
@@ -616,6 +728,7 @@ class TranslationMachine {
         document.getElementById('configSection').style.display = 'none';
         document.getElementById('fileInput').value = '';
         this.hideOcrProgress();
+        this.hideNewTranslationButton();
     }
 
     showConfigSection() {
@@ -834,6 +947,7 @@ class TranslationMachine {
         document.getElementById('translationSection').style.display = 'block';
         document.getElementById('translationSection').classList.add('fade-in');
         document.getElementById('previewContent').innerHTML = '<div class="preview-placeholder">Starting translation...</div>';
+        this.showNewTranslationButton(); // Allow starting fresh even during translation
     }
 
     async processChunks() {

@@ -70,6 +70,33 @@ body {
     gap: var(--spacing-sm);
 }
 
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.new-translation-btn {
+    background: var(--success-color);
+    border: 1px solid var(--success-color);
+    color: white;
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.new-translation-btn:hover {
+    background: #059669;
+    border-color: #059669;
+    box-shadow: var(--shadow-sm);
+}
+
 /* Buttons */
 .btn {
     display: inline-flex;
@@ -679,6 +706,17 @@ body {
     
     .container {
         padding: 0 var(--spacing-sm);
+    }
+
+    .header-actions {
+        gap: var(--spacing-sm);
+    }
+
+    .new-translation-btn,
+    .settings-btn {
+        padding: var(--spacing-sm);
+        min-width: 40px;
+        justify-content: center;
     }
 
     .upload-area {
