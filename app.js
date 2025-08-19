@@ -356,7 +356,7 @@ class TranslationMachine {
             }
 
             const reader = new FileReader();
-            reader.onload = async function(e) {
+            reader.onload = async (e) => {
                 try {
                     const typedarray = new Uint8Array(e.target.result);
                     
@@ -403,7 +403,7 @@ class TranslationMachine {
                         console.log('No text found, attempting OCR...');
                         // Try OCR for scanned PDFs
                         try {
-                            const ocrText = await this.performOcrOnPdf.call(this, pdf);
+                            const ocrText = await this.performOcrOnPdf(pdf);
                             if (ocrText.trim()) {
                                 console.log('OCR extraction completed:', ocrText.length, 'characters');
                                 resolve(ocrText.trim());
@@ -445,6 +445,11 @@ class TranslationMachine {
     }
 
     async performOcrOnPdf(pdf) {
+        // Check if Tesseract is available
+        if (typeof Tesseract === 'undefined') {
+            throw new Error('OCR library (Tesseract.js) not loaded. Please refresh the page and try again.');
+        }
+        
         // Show OCR progress
         this.showOcrProgress();
         
@@ -534,7 +539,7 @@ class TranslationMachine {
     async extractEpubText(file) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
-            reader.onload = async function(e) {
+            reader.onload = async (e) => {
                 try {
                     const zip = await JSZip.loadAsync(e.target.result);
                     let fullText = '';
