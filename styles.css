@@ -366,11 +366,34 @@ body {
     margin-bottom: var(--spacing-xl);
 }
 
+.prompt-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-sm);
+}
+
 .prompt-section label {
-    display: block;
     font-weight: 500;
     color: var(--text-primary);
-    margin-bottom: var(--spacing-sm);
+    margin: 0;
+}
+
+.debug-prompt-btn {
+    background: var(--warning-color);
+    color: white;
+}
+
+.debug-prompt-btn:hover {
+    background: #d97706;
+}
+
+.prompt-status {
+    margin-top: var(--spacing-sm);
+    padding: var(--spacing-sm);
+    background: var(--background-color);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--warning-color);
 }
 
 .prompt-section textarea {

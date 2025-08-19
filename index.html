@@ -108,8 +108,16 @@
                 </div>
 
                 <div class="prompt-section">
-                    <label for="systemPrompt">System Prompt</label>
+                    <div class="prompt-header">
+                        <label for="systemPrompt">System Prompt</label>
+                        <button type="button" class="btn-icon debug-prompt-btn" id="debugPromptBtn" title="Debug System Prompt">
+                            <i class="fas fa-bug"></i>
+                        </button>
+                    </div>
                     <textarea id="systemPrompt" rows="4" placeholder="Custom system prompt for translation..."></textarea>
+                    <div class="prompt-status" id="promptStatus" style="display: none;">
+                        <small class="help-text"><i class="fas fa-info-circle"></i> <span id="promptStatusText"></span></small>
+                    </div>
                 </div>
 
                 <div class="cost-estimate" id="costEstimate">

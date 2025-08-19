@@ -22,12 +22,21 @@ class TranslationMachine {
         };
 
         this.stylePresets = {
-            formal: 'You are a professional translator. Translate the following text to English. Use a formal, professional tone. Maintain the original structure and formatting. Provide only the English translation, do not include the original text.',
-            conversational: 'You are a professional translator. Translate the following text to English. Use a natural, conversational tone that sounds friendly and approachable. Provide only the English translation, do not include the original text.',
-            academic: 'You are a professional translator. Translate the following text to English. Use an academic, scholarly tone with precise terminology and formal structure. Provide only the English translation, do not include the original text.',
-            creative: 'You are a professional translator. Translate the following text to English. Use creative flair, adapting idioms and expressions to sound natural in English. Provide only the English translation, do not include the original text.',
-            technical: 'You are a professional translator. Translate the following text to English. Maintain technical accuracy and specialized terminology. Provide only the English translation, do not include the original text.'
+            formal: 'You are a professional translator. Translate the following text from its original language to English. Use a formal, professional tone. Maintain the original structure and formatting. Provide ONLY the English translation, do not include the original text. The output must be in English.',
+            conversational: 'You are a professional translator. Translate the following text from its original language to English. Use a natural, conversational tone that sounds friendly and approachable. Provide ONLY the English translation, do not include the original text. The output must be in English.',
+            academic: 'You are a professional translator. Translate the following text from its original language to English. Use an academic, scholarly tone with precise terminology and formal structure. Provide ONLY the English translation, do not include the original text. The output must be in English.',
+            creative: 'You are a professional translator. Translate the following text from its original language to English. Use creative flair, adapting idioms and expressions to sound natural in English. Provide ONLY the English translation, do not include the original text. The output must be in English.',
+            technical: 'You are a professional translator. Translate the following text from its original language to English. Maintain technical accuracy and specialized terminology. Provide ONLY the English translation, do not include the original text. The output must be in English.'
         };
+        
+        console.log('Style presets loaded. Checking all contain "English":');
+        Object.keys(this.stylePresets).forEach(key => {
+            const hasEnglish = this.stylePresets[key].toLowerCase().includes('english');
+            console.log(`${key}: ${hasEnglish ? 'OK' : 'MISSING ENGLISH!'}`);
+            if (!hasEnglish) {
+                console.error(`Critical error in ${key} preset:`, this.stylePresets[key]);
+            }
+        });
 
         this.db = null;
         this.init();
@@ -336,6 +345,7 @@ class TranslationMachine {
         document.getElementById('modelSelect').addEventListener('change', this.updateCostEstimate.bind(this));
         document.getElementById('styleSelect').addEventListener('change', this.updateSystemPrompt.bind(this));
         document.getElementById('systemPrompt').addEventListener('input', this.debounce(this.updateCostEstimate.bind(this), 500));
+        document.getElementById('debugPromptBtn').addEventListener('click', this.debugSystemPrompt.bind(this));
 
         // Translation controls
         document.getElementById('translateBtn').addEventListener('click', this.startTranslation.bind(this));
@@ -748,18 +758,115 @@ class TranslationMachine {
         const styleSelect = document.getElementById('styleSelect');
         const promptTextarea = document.getElementById('systemPrompt');
         
-        console.log('Updating system prompt - Style:', styleSelect.value);
+        console.log('=== SYSTEM PROMPT UPDATE ===');
+        console.log('Style selected:', styleSelect.value);
         
         if (styleSelect.value !== 'custom') {
-            const template = this.stylePresets[styleSelect.value];
+            let template = this.stylePresets[styleSelect.value];
+            console.log('Template from preset:', template);
+            
+            // Ensure template contains English
+            if (!template.toLowerCase().includes('english')) {
+                console.error('CRITICAL: Template does not contain "English"!', template);
+                // Fix the template
+                template = template.replace(/to \{language\}/g, 'to English');
+                console.log('Fixed template:', template);
+            }
+            
             promptTextarea.value = template;
-            console.log('System prompt updated to:', template);
+            console.log('Final system prompt set to:', template);
+            console.log('Prompt contains "English"?:', template.toLowerCase().includes('english'));
+        } else {
+            console.log('Using custom prompt:', promptTextarea.value);
         }
         
         // Update cost estimate when prompt changes
         if (this.currentText) {
             this.updateCostEstimate();
         }
+        
+        console.log('=== END SYSTEM PROMPT UPDATE ===');
+    }
+
+    debugSystemPrompt() {
+        const promptTextarea = document.getElementById('systemPrompt');
+        const promptStatus = document.getElementById('promptStatus');
+        const promptStatusText = document.getElementById('promptStatusText');
+        const currentPrompt = promptTextarea.value;
+        
+        console.log('=== SYSTEM PROMPT DEBUG ===');
+        console.log('Current prompt:', currentPrompt);
+        
+        const issues = [];
+        const suggestions = [];
+        
+        // Check if prompt contains "English"
+        if (!currentPrompt.toLowerCase().includes('english')) {
+            issues.push('❌ Prompt does not mention "English" as target language');
+            suggestions.push('Add "to English" or "in English"');
+        } else {
+            console.log('✅ Prompt contains "English"');
+        }
+        
+        // Check if prompt says "translate"
+        if (!currentPrompt.toLowerCase().includes('translate')) {
+            issues.push('❌ Prompt does not contain "translate" instruction');
+            suggestions.push('Add translation instruction');
+        } else {
+            console.log('✅ Prompt contains translation instruction');
+        }
+        
+        // Check for problematic language mentions
+        if (currentPrompt.toLowerCase().includes('portuguese') || currentPrompt.toLowerCase().includes('português')) {
+            issues.push('❌ Prompt mentions Portuguese as target (should only be source)');
+            suggestions.push('Remove Portuguese as target language');
+        }
+        
+        // Check if prompt says not to include original
+        if (!currentPrompt.toLowerCase().includes('only') || !currentPrompt.toLowerCase().includes('not include')) {
+            issues.push('❌ Prompt may allow original text in response');
+            suggestions.push('Add "Provide ONLY the English translation, do not include the original text"');
+        } else {
+            console.log('✅ Prompt instructs to exclude original text');
+        }
+        
+        console.log('Issues found:', issues);
+        console.log('Suggestions:', suggestions);
+        
+        if (issues.length > 0) {
+            promptStatus.style.display = 'block';
+            promptStatusText.innerHTML = `<strong>Issues found:</strong><br>${issues.join('<br>')}<br><br><strong>Suggestions:</strong><br>${suggestions.join('<br>')}`;
+            
+            // Offer to fix automatically
+            if (confirm('Issues found with system prompt. Would you like to automatically fix it?')) {
+                this.fixSystemPrompt();
+            }
+        } else {
+            promptStatus.style.display = 'block';
+            promptStatusText.innerHTML = '✅ System prompt looks good for English translation!';
+            setTimeout(() => {
+                promptStatus.style.display = 'none';
+            }, 3000);
+        }
+        
+        console.log('=== END SYSTEM PROMPT DEBUG ===');
+    }
+
+    fixSystemPrompt() {
+        const promptTextarea = document.getElementById('systemPrompt');
+        const fixedPrompt = 'You are a professional translator. Translate the following text from its original language to English. Use a formal, professional tone. Provide ONLY the English translation, do not include the original text. The output must be in English.';
+        
+        promptTextarea.value = fixedPrompt;
+        console.log('System prompt fixed to:', fixedPrompt);
+        
+        const promptStatus = document.getElementById('promptStatus');
+        const promptStatusText = document.getElementById('promptStatusText');
+        promptStatus.style.display = 'block';
+        promptStatusText.innerHTML = '✅ System prompt has been fixed for English translation!';
+        
+        setTimeout(() => {
+            promptStatus.style.display = 'none';
+        }, 3000);
     }
 
     // Rough token estimation (approximate)
@@ -1044,9 +1151,33 @@ class TranslationMachine {
         const model = document.getElementById('modelSelect').value;
         const systemPrompt = document.getElementById('systemPrompt').value;
         
-        console.log('Translating chunk with model:', model);
-        console.log('System prompt:', systemPrompt);
-        console.log('Text to translate (first 100 chars):', text.substring(0, 100) + '...');
+        console.log('=== TRANSLATION DEBUG INFO ===');
+        console.log('Model:', model);
+        console.log('System prompt being sent:', systemPrompt);
+        console.log('Input text (first 200 chars):', text.substring(0, 200) + '...');
+        console.log('System prompt contains "English"?:', systemPrompt.toLowerCase().includes('english'));
+        console.log('System prompt contains "translate"?:', systemPrompt.toLowerCase().includes('translate'));
+        
+        // Double-check the system prompt is for English translation
+        if (!systemPrompt.toLowerCase().includes('english')) {
+            console.error('CRITICAL ERROR: System prompt does not contain "English"!');
+            console.error('Current prompt:', systemPrompt);
+            console.error('Forcing fallback to English translation prompt...');
+            
+            // Fallback to ensure English translation
+            systemPrompt = 'You are a professional translator. Translate the following text to English. Provide only the English translation, do not include the original text.';
+            console.log('Using fallback prompt:', systemPrompt);
+        }
+        
+        // Additional safety check - make sure we're not accidentally asking for Portuguese
+        if (systemPrompt.toLowerCase().includes('portuguese') || systemPrompt.toLowerCase().includes('português')) {
+            console.error('CRITICAL ERROR: System prompt mentions Portuguese - this will cause wrong output!');
+            console.error('Problematic prompt:', systemPrompt);
+            
+            // Force English-only prompt
+            systemPrompt = 'You are a professional translator. Translate the following text from Portuguese to English. Use a formal, professional tone. Provide only the English translation, do not include the original Portuguese text.';
+            console.log('Using corrected prompt:', systemPrompt);
+        }
         
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
@@ -1075,7 +1206,22 @@ class TranslationMachine {
         const pricing = this.modelPricing[model];
         
         const translatedText = data.choices[0].message.content;
-        console.log('Translation result (first 100 chars):', translatedText.substring(0, 100) + '...');
+        console.log('Translation result (first 200 chars):', translatedText.substring(0, 200) + '...');
+        
+        // Check if the result looks like it's still in Portuguese (basic heuristic)
+        const portugueseWords = ['que', 'para', 'com', 'uma', 'como', 'mais', 'por', 'não', 'dos', 'da', 'de', 'do'];
+        const englishWords = ['the', 'and', 'for', 'are', 'with', 'this', 'that', 'from', 'they', 'have'];
+        
+        const lowerText = translatedText.toLowerCase();
+        const portugueseCount = portugueseWords.filter(word => lowerText.includes(' ' + word + ' ')).length;
+        const englishCount = englishWords.filter(word => lowerText.includes(' ' + word + ' ')).length;
+        
+        console.log('Language detection - Portuguese indicators:', portugueseCount, 'English indicators:', englishCount);
+        
+        if (portugueseCount > englishCount && portugueseCount > 2) {
+            console.warn('WARNING: Translation result appears to still be in Portuguese!');
+            console.warn('This suggests the system prompt may not be working correctly');
+        }
         
         const cost = (usage.prompt_tokens / 1000) * pricing.input + 
                     (usage.completion_tokens / 1000) * pricing.output;
