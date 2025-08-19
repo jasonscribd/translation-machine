@@ -197,7 +197,7 @@ class TranslationMachine {
         if (saved) {
             const settings = JSON.parse(saved);
             this.apiKey = settings.apiKey || '';
-            document.getElementById('chunkSize').value = settings.chunkSize || '2000';
+            document.getElementById('chunkSize').value = settings.chunkSize || '1500';
         }
     }
 
@@ -651,8 +651,9 @@ class TranslationMachine {
 
     // Rough token estimation (approximate)
     estimateTokens(text) {
-        // Very rough approximation: 1 token ≈ 0.75 words ≈ 4 characters
-        return Math.ceil(text.length / 4);
+        // More conservative approximation: 1 token ≈ 0.75 words ≈ 3.5 characters
+        // This accounts for punctuation and special characters
+        return Math.ceil(text.length / 3.5);
     }
 
     updateCostEstimate() {
@@ -719,10 +720,19 @@ class TranslationMachine {
     setupChunks() {
         const chunkSize = parseInt(document.getElementById('chunkSize').value);
         const systemPrompt = document.getElementById('systemPrompt').value;
+        const systemPromptTokens = this.estimateTokens(systemPrompt);
         
-        this.translationState.chunks = this.chunkText(this.currentText, chunkSize - this.estimateTokens(systemPrompt));
+        // Reserve tokens for system prompt and ensure we don't exceed output limits
+        // Use conservative chunk size accounting for translation expansion (typically 1.2-1.5x)
+        const maxInputTokens = Math.min(chunkSize - systemPromptTokens, 8000); // Cap input to 8K tokens
+        
+        console.log('Chunk setup - System prompt tokens:', systemPromptTokens, 'Max input tokens per chunk:', maxInputTokens);
+        
+        this.translationState.chunks = this.chunkText(this.currentText, maxInputTokens);
         
         document.getElementById('chunksProgress').textContent = `0 / ${this.translationState.chunks.length}`;
+        
+        console.log('Created', this.translationState.chunks.length, 'chunks');
     }
 
     chunkText(text, maxTokens) {
@@ -736,6 +746,25 @@ class TranslationMachine {
             if (this.estimateTokens(testChunk) > maxTokens && currentChunk) {
                 chunks.push(currentChunk.trim());
                 currentChunk = paragraph;
+                
+                // If a single paragraph is too large, split it further
+                if (this.estimateTokens(paragraph) > maxTokens) {
+                    const sentences = paragraph.split(/(?<=[.!?])\s+/);
+                    let sentenceChunk = '';
+                    
+                    for (const sentence of sentences) {
+                        const testSentence = sentenceChunk + (sentenceChunk ? ' ' : '') + sentence;
+                        
+                        if (this.estimateTokens(testSentence) > maxTokens && sentenceChunk) {
+                            chunks.push(sentenceChunk.trim());
+                            sentenceChunk = sentence;
+                        } else {
+                            sentenceChunk = testSentence;
+                        }
+                    }
+                    
+                    currentChunk = sentenceChunk;
+                }
             } else {
                 currentChunk = testChunk;
             }
@@ -745,7 +774,60 @@ class TranslationMachine {
             chunks.push(currentChunk.trim());
         }
         
-        return chunks;
+        // Final validation - split any remaining chunks that are too large
+        const validatedChunks = [];
+        for (const chunk of chunks) {
+            if (this.estimateTokens(chunk) > maxTokens) {
+                // Force split by character count as last resort
+                const words = chunk.split(' ');
+                let wordChunk = '';
+                
+                for (const word of words) {
+                    const testWord = wordChunk + (wordChunk ? ' ' : '') + word;
+                    
+                    if (this.estimateTokens(testWord) > maxTokens && wordChunk) {
+                        validatedChunks.push(wordChunk.trim());
+                        wordChunk = word;
+                    } else {
+                        wordChunk = testWord;
+                    }
+                }
+                
+                if (wordChunk) {
+                    validatedChunks.push(wordChunk.trim());
+                }
+            } else {
+                validatedChunks.push(chunk);
+            }
+        }
+        
+        return validatedChunks;
+    }
+
+    getMaxTokensForModel(model, inputText) {
+        // Model limits for completion tokens (output)
+        const modelLimits = {
+            'gpt-4o-mini': 16384,
+            'gpt-4o': 16384, 
+            'gpt-4-turbo': 4096
+        };
+        
+        const maxCompletionTokens = modelLimits[model] || 4096;
+        
+        // Estimate input tokens
+        const inputTokens = this.estimateTokens(inputText);
+        
+        // For translation, output is typically 0.8-1.2x input size
+        // Use conservative multiplier and cap at model limit
+        const estimatedOutputTokens = Math.ceil(inputTokens * 1.2);
+        const safeMaxTokens = Math.min(estimatedOutputTokens, maxCompletionTokens);
+        
+        // Ensure we have at least 1000 tokens for output, but not more than the limit
+        const finalMaxTokens = Math.max(1000, Math.min(safeMaxTokens, maxCompletionTokens));
+        
+        console.log(`Model: ${model}, Input tokens: ${inputTokens}, Max completion tokens: ${finalMaxTokens}`);
+        
+        return finalMaxTokens;
     }
 
     showTranslationSection() {
@@ -816,7 +898,7 @@ class TranslationMachine {
                     { role: 'user', content: text }
                 ],
                 temperature: 0.3,
-                max_tokens: Math.ceil(this.estimateTokens(text) * 1.5)
+                max_tokens: this.getMaxTokensForModel(model, text)
             })
         });
 

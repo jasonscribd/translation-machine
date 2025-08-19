@@ -212,11 +212,11 @@
                 <div class="setting-item">
                     <label>Chunk Size</label>
                     <select id="chunkSize">
-                        <option value="1000">Small (1000 tokens)</option>
-                        <option value="2000" selected>Medium (2000 tokens)</option>
-                        <option value="4000">Large (4000 tokens)</option>
+                        <option value="1000">Small (1000 tokens) - Safest</option>
+                        <option value="1500" selected>Medium (1500 tokens) - Recommended</option>
+                        <option value="2000">Large (2000 tokens) - Advanced</option>
                     </select>
-                    <small class="help-text">Larger chunks are more efficient but may hit rate limits.</small>
+                    <small class="help-text">Smaller chunks are safer and prevent token limit errors.</small>
                 </div>
             </div>
             <div class="modal-footer">
