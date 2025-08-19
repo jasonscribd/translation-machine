@@ -22,11 +22,11 @@ class TranslationMachine {
         };
 
         this.stylePresets = {
-            formal: 'Translate the following text to {language} using a formal, professional tone. Maintain the original structure and formatting.',
-            conversational: 'Translate the following text to {language} using a natural, conversational tone that sounds friendly and approachable.',
-            academic: 'Translate the following text to {language} using an academic, scholarly tone with precise terminology and formal structure.',
-            creative: 'Translate the following text to {language} with creative flair, adapting idioms and expressions to feel natural in the target language.',
-            technical: 'Translate the following text to {language} maintaining technical accuracy and specialized terminology.'
+            formal: 'You are a professional translator. Translate the following text to English. Use a formal, professional tone. Maintain the original structure and formatting. Provide only the English translation, do not include the original text.',
+            conversational: 'You are a professional translator. Translate the following text to English. Use a natural, conversational tone that sounds friendly and approachable. Provide only the English translation, do not include the original text.',
+            academic: 'You are a professional translator. Translate the following text to English. Use an academic, scholarly tone with precise terminology and formal structure. Provide only the English translation, do not include the original text.',
+            creative: 'You are a professional translator. Translate the following text to English. Use creative flair, adapting idioms and expressions to sound natural in English. Provide only the English translation, do not include the original text.',
+            technical: 'You are a professional translator. Translate the following text to English. Maintain technical accuracy and specialized terminology. Provide only the English translation, do not include the original text.'
         };
 
         this.db = null;
@@ -138,10 +138,9 @@ class TranslationMachine {
         // Restore configuration
         if (session.config) {
             document.getElementById('modelSelect').value = session.config.model || 'gpt-4o-mini';
-            document.getElementById('targetLang').value = session.config.targetLang || 'spanish';
             document.getElementById('styleSelect').value = session.config.style || 'formal';
             document.getElementById('systemPrompt').value = session.config.systemPrompt || '';
-            this.handleLanguageChange();
+            this.updateSystemPrompt();
         }
         
         // Restore translation state
@@ -224,7 +223,6 @@ class TranslationMachine {
 
         // Configuration
         document.getElementById('modelSelect').addEventListener('change', this.updateCostEstimate.bind(this));
-        document.getElementById('targetLang').addEventListener('change', this.handleLanguageChange.bind(this));
         document.getElementById('styleSelect').addEventListener('change', this.updateSystemPrompt.bind(this));
         document.getElementById('systemPrompt').addEventListener('input', this.debounce(this.updateCostEstimate.bind(this), 500));
 
@@ -633,37 +631,22 @@ class TranslationMachine {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
-    handleLanguageChange() {
-        const select = document.getElementById('targetLang');
-        const customInput = document.getElementById('customLang');
-        
-        if (select.value === 'custom') {
-            customInput.style.display = 'block';
-            customInput.focus();
-        } else {
-            customInput.style.display = 'none';
-        }
-        
-        this.updateSystemPrompt();
-    }
-
     updateSystemPrompt() {
         const styleSelect = document.getElementById('styleSelect');
-        const targetLang = this.getTargetLanguage();
         const promptTextarea = document.getElementById('systemPrompt');
         
-        if (styleSelect.value !== 'custom' && targetLang) {
+        console.log('Updating system prompt - Style:', styleSelect.value);
+        
+        if (styleSelect.value !== 'custom') {
             const template = this.stylePresets[styleSelect.value];
-            promptTextarea.value = template.replace('{language}', targetLang);
+            promptTextarea.value = template;
+            console.log('System prompt updated to:', template);
         }
-    }
-
-    getTargetLanguage() {
-        const select = document.getElementById('targetLang');
-        if (select.value === 'custom') {
-            return document.getElementById('customLang').value.trim();
+        
+        // Update cost estimate when prompt changes
+        if (this.currentText) {
+            this.updateCostEstimate();
         }
-        return select.options[select.selectedIndex].text;
     }
 
     // Rough token estimation (approximate)
@@ -697,8 +680,6 @@ class TranslationMachine {
         this.translationState.sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
         this.translationState.config = {
             model: document.getElementById('modelSelect').value,
-            targetLang: document.getElementById('targetLang').value,
-            customLang: document.getElementById('customLang').value,
             style: document.getElementById('styleSelect').value,
             systemPrompt: document.getElementById('systemPrompt').value
         };
@@ -729,12 +710,6 @@ class TranslationMachine {
 
         if (!this.currentText) {
             alert('Please upload a file first');
-            return false;
-        }
-
-        const targetLang = this.getTargetLanguage();
-        if (!targetLang) {
-            alert('Please select or enter a target language');
             return false;
         }
 
@@ -824,6 +799,10 @@ class TranslationMachine {
         const model = document.getElementById('modelSelect').value;
         const systemPrompt = document.getElementById('systemPrompt').value;
         
+        console.log('Translating chunk with model:', model);
+        console.log('System prompt:', systemPrompt);
+        console.log('Text to translate (first 100 chars):', text.substring(0, 100) + '...');
+        
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -850,11 +829,14 @@ class TranslationMachine {
         const usage = data.usage;
         const pricing = this.modelPricing[model];
         
+        const translatedText = data.choices[0].message.content;
+        console.log('Translation result (first 100 chars):', translatedText.substring(0, 100) + '...');
+        
         const cost = (usage.prompt_tokens / 1000) * pricing.input + 
                     (usage.completion_tokens / 1000) * pricing.output;
         
         return {
-            text: data.choices[0].message.content,
+            text: translatedText,
             tokensUsed: usage.total_tokens,
             cost: cost
         };
@@ -1009,8 +991,7 @@ class TranslationMachine {
         const baseName = this.currentFile ? 
             this.currentFile.name.replace(/\.[^/.]+$/, '') : 
             'translation';
-        const targetLang = this.getTargetLanguage().toLowerCase().replace(/\s+/g, '-');
-        return `${baseName}-${targetLang}.${extension}`;
+        return `${baseName}-english.${extension}`;
     }
 
     downloadBlob(blob, filename) {

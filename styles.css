@@ -304,6 +304,37 @@ body {
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
+.translation-direction {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md);
+    background: var(--background-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    font-weight: 500;
+}
+
+.translation-direction .fas {
+    color: var(--primary-color);
+}
+
+.translation-direction .fa-arrow-right {
+    color: var(--success-color);
+}
+
+.translation-direction .target-lang {
+    color: var(--primary-color);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.translation-direction .fa-flag-usa {
+    color: #dc2626;
+}
+
 .prompt-section {
     margin-bottom: var(--spacing-xl);
 }

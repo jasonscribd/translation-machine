@@ -1,6 +1,6 @@
 # Translation Machine
 
-A modern, responsive translation application that runs entirely in your browser. Translate TXT, PDF, and EPUB files using OpenAI's GPT models with custom styling and chunked processing for large documents.
+A modern, responsive translation application that runs entirely in your browser. Translate documents from any language to English using OpenAI's GPT models with OCR support for scanned PDFs.
 
 ## 🚀 Features
 
