@@ -400,7 +400,20 @@ class TranslationMachine {
                     }
                     
                     if (!fullText.trim()) {
-                        reject(new Error('No text found in PDF. This could mean:\n• The PDF contains only images/scanned content\n• The PDF is password protected\n• The PDF uses unsupported fonts\n\nTry converting the PDF to text first, or use a TXT file instead.'));
+                        console.log('No text found, attempting OCR...');
+                        // Try OCR for scanned PDFs
+                        try {
+                            const ocrText = await this.performOcrOnPdf.call(this, pdf);
+                            if (ocrText.trim()) {
+                                console.log('OCR extraction completed:', ocrText.length, 'characters');
+                                resolve(ocrText.trim());
+                            } else {
+                                reject(new Error('No text could be extracted from this PDF, even with OCR. The PDF may be corrupted or contain no readable content.'));
+                            }
+                        } catch (ocrError) {
+                            console.error('OCR failed:', ocrError);
+                            reject(new Error('This appears to be a scanned PDF, but OCR processing failed:\n' + ocrError.message + '\n\nTry converting the PDF to text manually first.'));
+                        }
                     } else {
                         console.log('PDF text extraction completed:', fullText.length, 'characters');
                         resolve(fullText.trim());
@@ -429,6 +442,93 @@ class TranslationMachine {
             
             reader.readAsArrayBuffer(file);
         });
+    }
+
+    async performOcrOnPdf(pdf) {
+        // Show OCR progress
+        this.showOcrProgress();
+        
+        let fullText = '';
+        const totalPages = pdf.numPages;
+        
+        try {
+            for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+                this.updateOcrProgress(pageNum - 1, totalPages, `Processing page ${pageNum} of ${totalPages}...`);
+                
+                try {
+                    // Get the page
+                    const page = await pdf.getPage(pageNum);
+                    
+                    // Render page to canvas
+                    const scale = 2.0; // Higher scale for better OCR accuracy
+                    const viewport = page.getViewport({ scale });
+                    
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+                    canvas.height = viewport.height;
+                    canvas.width = viewport.width;
+                    
+                    const renderContext = {
+                        canvasContext: context,
+                        viewport: viewport
+                    };
+                    
+                    await page.render(renderContext).promise;
+                    
+                    // Convert canvas to image data for OCR
+                    const imageData = canvas.toDataURL('image/png');
+                    
+                    // Perform OCR on the page
+                    const { data: { text } } = await Tesseract.recognize(imageData, 'eng', {
+                        logger: (m) => {
+                            if (m.status === 'recognizing text') {
+                                const progress = Math.round(m.progress * 100);
+                                this.updateOcrProgress(pageNum - 1 + m.progress, totalPages, 
+                                    `OCR on page ${pageNum}: ${progress}%`);
+                            }
+                        }
+                    });
+                    
+                    if (text.trim()) {
+                        fullText += text.trim() + '\n\n';
+                        console.log(`OCR Page ${pageNum}: ${text.length} characters extracted`);
+                    }
+                    
+                } catch (pageError) {
+                    console.warn(`OCR failed on page ${pageNum}:`, pageError);
+                    // Continue with other pages
+                }
+            }
+            
+            this.updateOcrProgress(totalPages, totalPages, 'OCR completed!');
+            
+            // Hide OCR progress after a short delay
+            setTimeout(() => this.hideOcrProgress(), 1500);
+            
+            return fullText;
+            
+        } catch (error) {
+            this.hideOcrProgress();
+            throw error;
+        }
+    }
+
+    showOcrProgress() {
+        document.getElementById('ocrProgress').style.display = 'block';
+        document.getElementById('ocrProgressFill').style.width = '0%';
+        document.getElementById('ocrProgressText').textContent = '0%';
+        document.getElementById('ocrStatusText').textContent = 'Initializing OCR...';
+    }
+
+    updateOcrProgress(current, total, status) {
+        const percentage = Math.round((current / total) * 100);
+        document.getElementById('ocrProgressFill').style.width = percentage + '%';
+        document.getElementById('ocrProgressText').textContent = percentage + '%';
+        document.getElementById('ocrStatusText').textContent = status;
+    }
+
+    hideOcrProgress() {
+        document.getElementById('ocrProgress').style.display = 'none';
     }
 
     async extractEpubText(file) {
@@ -512,6 +612,7 @@ class TranslationMachine {
         document.getElementById('uploadArea').style.display = 'block';
         document.getElementById('configSection').style.display = 'none';
         document.getElementById('fileInput').value = '';
+        this.hideOcrProgress();
     }
 
     showConfigSection() {

@@ -49,6 +49,19 @@
                             <i class="fas fa-times"></i>
                         </button>
                     </div>
+                    
+                    <!-- OCR Progress (hidden by default) -->
+                    <div class="ocr-progress" id="ocrProgress" style="display: none;">
+                        <div class="ocr-status">
+                            <i class="fas fa-eye"></i>
+                            <span id="ocrStatusText">Processing scanned PDF with OCR...</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="ocrProgressFill"></div>
+                            <span class="progress-text" id="ocrProgressText">0%</span>
+                        </div>
+                        <small class="help-text">This may take a few minutes for large documents.</small>
+                    </div>
                 </div>
             </section>
 
@@ -226,6 +239,7 @@
     <script src="https://unpkg.com/docx@8.5.0/build/index.js"></script>
     <script src="https://unpkg.com/pizzip@3.1.6/dist/pizzip.js"></script>
     <script src="https://unpkg.com/docxtemplater@3.42.2/build/docxtemplater.js"></script>
+    <script src="https://unpkg.com/tesseract.js@4/dist/tesseract.min.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
