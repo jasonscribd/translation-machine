@@ -1321,7 +1321,11 @@ class TranslationMachine {
                     retryCount++;
                     console.error(`Translation error for chunk ${i + 1} (attempt ${retryCount}):`, error);
                     
-                    if (error.message.includes('rate limit') || error.message.includes('Rate limit')) {
+                    if (error.name === 'AbortError') {
+                        console.error(`Request timeout for chunk ${i + 1}`);
+                        this.translationState.results[i] = `[TIMEOUT ERROR: Request took too long - ${this.translationState.chunks[i].substring(0, 200)}...]`;
+                        success = true; // Don't retry timeout errors
+                    } else if (error.message.includes('rate limit') || error.message.includes('Rate limit')) {
                         const waitTime = Math.min(5000 * retryCount, 30000); // Wait 5s, 10s, 15s...
                         console.log(`Rate limited. Waiting ${waitTime/1000} seconds before retry...`);
                         await this.sleep(waitTime);
@@ -1380,25 +1384,32 @@ class TranslationMachine {
         console.log('System prompt contains "English"?:', systemPrompt.toLowerCase().includes('english'));
         console.log('System prompt contains "translate"?:', systemPrompt.toLowerCase().includes('translate'));
         
-        // Double-check the system prompt is for English translation
-        if (!systemPrompt.toLowerCase().includes('english')) {
-            console.error('CRITICAL ERROR: System prompt does not contain "English"!');
-            console.error('Current prompt:', systemPrompt);
-            console.error('Forcing fallback to English translation prompt...');
+        // Only run translation-specific system prompt checks in translation mode
+        if (mode === 'translate') {
+            // Double-check the system prompt is for English translation
+            if (!systemPrompt.toLowerCase().includes('english')) {
+                console.error('CRITICAL ERROR: Translation prompt does not contain "English"!');
+                console.error('Current prompt:', systemPrompt);
+                console.error('Forcing fallback to English translation prompt...');
+                
+                // Fallback to ensure English translation
+                systemPrompt = 'You are a professional translator. Translate the following text to English. Provide only the English translation, do not include the original text.';
+                console.log('Using fallback prompt:', systemPrompt);
+            }
             
-            // Fallback to ensure English translation
-            systemPrompt = 'You are a professional translator. Translate the following text to English. Provide only the English translation, do not include the original text.';
-            console.log('Using fallback prompt:', systemPrompt);
-        }
-        
-        // Additional safety check - make sure we're not accidentally asking for Portuguese
-        if (systemPrompt.toLowerCase().includes('portuguese') || systemPrompt.toLowerCase().includes('português')) {
-            console.error('CRITICAL ERROR: System prompt mentions Portuguese - this will cause wrong output!');
-            console.error('Problematic prompt:', systemPrompt);
-            
-            // Force English-only prompt
-            systemPrompt = 'You are a professional translator. Translate the following text from Portuguese to English. Use a formal, professional tone. Provide only the English translation, do not include the original Portuguese text.';
-            console.log('Using corrected prompt:', systemPrompt);
+            // Additional safety check - make sure we're not accidentally asking for Portuguese
+            if (systemPrompt.toLowerCase().includes('portuguese') || systemPrompt.toLowerCase().includes('português')) {
+                console.error('CRITICAL ERROR: System prompt mentions Portuguese - this will cause wrong output!');
+                console.error('Problematic prompt:', systemPrompt);
+                
+                // Force English-only prompt
+                systemPrompt = 'You are a professional translator. Translate the following text from Portuguese to English. Use a formal, professional tone. Provide only the English translation, do not include the original Portuguese text.';
+                console.log('Using corrected prompt:', systemPrompt);
+            }
+        } else {
+            // Transformation mode - just log the prompt without overriding
+            console.log('📝 Transformation mode - using system prompt as-is for text transformation');
+            console.log('Transformation prompt preview:', systemPrompt.substring(0, 200) + '...');
         }
         
         // Check current mode to determine user message format
@@ -1427,14 +1438,24 @@ class TranslationMachine {
         console.log('System message:', requestBody.messages[0].content);
         console.log('User message preview:', requestBody.messages[1].content.substring(0, 100) + '...');
         
+        // Add timeout to prevent infinite hangs
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+            console.error('⏰ API request timeout after 60 seconds');
+            controller.abort();
+        }, 60000); // 60 second timeout
+
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${this.apiKey}`
             },
-            body: JSON.stringify(requestBody)
+            body: JSON.stringify(requestBody),
+            signal: controller.signal
         });
+
+        clearTimeout(timeoutId); // Clear timeout if request completes
 
         if (!response.ok) {
             const error = await response.json();
@@ -1474,19 +1495,26 @@ class TranslationMachine {
         const confidence = englishMatches.length / (englishMatches.length + portugueseMatches.length) * 100;
         console.log('English confidence:', confidence.toFixed(1) + '%');
         
-        if (portugueseMatches.length > englishMatches.length && portugueseMatches.length > 2) {
-            console.error('🚨 CRITICAL: Translation result is in Portuguese!');
-            console.error('Portuguese words detected:', portugueseMatches);
-            console.error('This means OpenAI is completely ignoring our English translation request');
-            
-            // Try to force a re-translation with an even stronger prompt
-            console.warn('Attempting to force English translation...');
-            return await this.forceEnglishTranslation(text, model);
-        } else if (confidence < 70) {
-            console.warn('⚠️ WARNING: Translation confidence is low (' + confidence.toFixed(1) + '%)');
-            console.warn('Result may contain mixed languages or errors');
+        // Only run Portuguese detection in translation mode, not transformation mode
+        if (mode === 'translate') {
+            if (portugueseMatches.length > englishMatches.length && portugueseMatches.length > 2) {
+                console.error('🚨 CRITICAL: Translation result is in Portuguese!');
+                console.error('Portuguese words detected:', portugueseMatches);
+                console.error('This means OpenAI is completely ignoring our English translation request');
+                
+                // Try to force a re-translation with an even stronger prompt
+                console.warn('Attempting to force English translation...');
+                return await this.forceEnglishTranslation(text, model);
+            } else if (confidence < 70) {
+                console.warn('⚠️ WARNING: Translation confidence is low (' + confidence.toFixed(1) + '%)');
+                console.warn('Result may contain mixed languages or errors');
+            } else {
+                console.log('✅ Translation appears to be in English (confidence: ' + confidence.toFixed(1) + '%)');
+            }
         } else {
-            console.log('✅ Translation appears to be in English (confidence: ' + confidence.toFixed(1) + '%)');
+            // Transformation mode - just log the analysis without triggering Portuguese detection
+            console.log('📝 Transformation mode - language detection is for analysis only');
+            console.log('✅ Transformation completed (confidence: ' + confidence.toFixed(1) + '%)');
         }
         
         const cost = (usage.prompt_tokens / 1000) * pricing.input + 
