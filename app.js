@@ -28,6 +28,18 @@ class TranslationMachine {
             creative: 'You are a professional translator. Translate the following text from its original language to English. Use creative flair, adapting idioms and expressions to sound natural in English. Provide ONLY the English translation, do not include the original text. The output must be in English.',
             technical: 'You are a professional translator. Translate the following text from its original language to English. Maintain technical accuracy and specialized terminology. Provide ONLY the English translation, do not include the original text. The output must be in English.'
         };
+
+        this.transformationPresets = {
+            'shakespearean-modern': 'Transform the following Shakespearean or Early Modern English text into contemporary modern English. Update archaic vocabulary, grammar structures, and expressions while preserving the original meaning and tone. Make it easily understandable to modern readers.',
+            'formal-casual': 'Rewrite the following formal text in a conversational, casual tone. Use simpler language, contractions where appropriate, and a more relaxed, friendly style while maintaining the core message.',
+            'complex-simple': 'Simplify the following complex English text. Use shorter sentences, common vocabulary, and clear structure. Make it accessible to readers with basic English proficiency while retaining all important information.',
+            'academic-plain': 'Convert the following academic or scholarly text into plain, everyday language. Remove jargon, simplify complex concepts, and use clear, straightforward explanations that anyone can understand.',
+            'archaic-modern': 'Update the following archaic English text to modern English. Replace outdated words, grammar, and expressions with contemporary equivalents while preserving the original meaning and style.',
+            'legal-plain': 'Translate the following legal text into plain English. Remove legal jargon, explain complex terms, and make the content accessible to non-lawyers while maintaining accuracy.',
+            'technical-layman': 'Rewrite the following technical text for a general audience. Explain technical terms, use analogies where helpful, and make complex concepts understandable to non-experts.',
+            'verbose-concise': 'Make the following verbose text more concise and direct. Remove unnecessary words, combine redundant phrases, and streamline the message while keeping all essential information.',
+            'passive-active': 'Convert the following text from passive voice to active voice where appropriate. Make the writing more direct, engaging, and clear while maintaining the original meaning.'
+        };
         
         console.log('Style presets loaded. Checking all contain "English":');
         Object.keys(this.stylePresets).forEach(key => {
@@ -161,8 +173,11 @@ class TranslationMachine {
         // Restore configuration
         if (session.config) {
             document.getElementById('modelSelect').value = session.config.model || 'gpt-4o-mini';
+            document.getElementById('translationMode').value = session.config.mode || 'translate';
             document.getElementById('styleSelect').value = session.config.style || 'formal';
+            document.getElementById('transformationType').value = session.config.transformationType || 'shakespearean-modern';
             document.getElementById('systemPrompt').value = session.config.systemPrompt || '';
+            this.handleModeChange(); // Update UI based on mode
             this.updateSystemPrompt();
         }
         
@@ -343,6 +358,8 @@ class TranslationMachine {
 
         // Configuration
         document.getElementById('modelSelect').addEventListener('change', this.updateCostEstimate.bind(this));
+        document.getElementById('translationMode').addEventListener('change', this.handleModeChange.bind(this));
+        document.getElementById('transformationType').addEventListener('change', this.updateSystemPrompt.bind(this));
         document.getElementById('styleSelect').addEventListener('change', this.updateSystemPrompt.bind(this));
         document.getElementById('systemPrompt').addEventListener('input', this.debounce(this.updateCostEstimate.bind(this), 500));
         document.getElementById('debugPromptBtn').addEventListener('click', this.debugSystemPrompt.bind(this));
@@ -757,25 +774,45 @@ class TranslationMachine {
     updateSystemPrompt() {
         const styleSelect = document.getElementById('styleSelect');
         const promptTextarea = document.getElementById('systemPrompt');
+        const mode = document.getElementById('translationMode').value;
         
         console.log('=== SYSTEM PROMPT UPDATE ===');
+        console.log('Mode:', mode);
         console.log('Style selected:', styleSelect.value);
         
-        if (styleSelect.value !== 'custom') {
-            let template = this.stylePresets[styleSelect.value];
-            console.log('Template from preset:', template);
+        if (styleSelect.value !== 'custom' && (mode === 'translate' || styleSelect.value !== 'custom')) {
+            let template;
             
-            // Ensure template contains English
-            if (!template.toLowerCase().includes('english')) {
-                console.error('CRITICAL: Template does not contain "English"!', template);
-                // Fix the template
-                template = template.replace(/to \{language\}/g, 'to English');
-                console.log('Fixed template:', template);
+            if (mode === 'transform') {
+                // Use transformation presets
+                template = this.getTransformationPrompt();
+                if (!template) {
+                    // Custom transformation - don't override user's custom prompt
+                    console.log('Custom transformation selected - keeping user prompt');
+                    return;
+                }
+            } else {
+                // Use translation presets
+                template = this.stylePresets[styleSelect.value];
+                
+                // Ensure template contains English
+                if (!template.toLowerCase().includes('english')) {
+                    console.error('CRITICAL: Translation template does not contain "English"!', template);
+                    // Fix the template
+                    template = template.replace(/to \{language\}/g, 'to English');
+                    console.log('Fixed template:', template);
+                }
             }
             
+            console.log('Template generated:', template);
             promptTextarea.value = template;
             console.log('Final system prompt set to:', template);
-            console.log('Prompt contains "English"?:', template.toLowerCase().includes('english'));
+            
+            if (mode === 'translate') {
+                console.log('Translation prompt contains "English"?:', template.toLowerCase().includes('english'));
+            } else {
+                console.log('Transformation prompt ready');
+            }
         } else {
             console.log('Using custom prompt:', promptTextarea.value);
         }
@@ -786,6 +823,77 @@ class TranslationMachine {
         }
         
         console.log('=== END SYSTEM PROMPT UPDATE ===');
+    }
+
+    handleModeChange() {
+        const mode = document.getElementById('translationMode').value;
+        const translationDirection = document.getElementById('translationDirection');
+        const transformationDirection = document.getElementById('transformationDirection');
+        const styleLabel = document.getElementById('styleSelectLabel');
+        const translateBtn = document.getElementById('translateBtn');
+        
+        console.log('Mode changed to:', mode);
+        
+        if (mode === 'transform') {
+            // Show transformation options, hide translation direction
+            translationDirection.style.display = 'none';
+            transformationDirection.style.display = 'block';
+            styleLabel.textContent = 'Transformation Style';
+            translateBtn.innerHTML = '<i class="fas fa-magic"></i> Start Transformation';
+            
+            // Update page title and header for transformation mode
+            document.title = 'Translation Machine - Text Transformation';
+        } else {
+            // Show translation options, hide transformation direction
+            translationDirection.style.display = 'block';
+            transformationDirection.style.display = 'none';
+            styleLabel.textContent = 'Translation Style';
+            translateBtn.innerHTML = '<i class="fas fa-play"></i> Start Translation';
+            
+            // Restore original title for translation mode
+            document.title = 'Translation Machine - Translate to English';
+        }
+        
+        // Update system prompt based on new mode
+        this.updateSystemPrompt();
+    }
+
+    getTransformationPrompt() {
+        const transformationType = document.getElementById('transformationType').value;
+        
+        if (transformationType === 'custom-transform') {
+            return null; // Let user write custom prompt
+        }
+        
+        const basePrompt = this.transformationPresets[transformationType];
+        if (!basePrompt) {
+            return 'Transform the following English text as requested. Provide only the transformed text, do not include the original.';
+        }
+        
+        const styleSelect = document.getElementById('styleSelect');
+        let styledPrompt = basePrompt;
+        
+        // Add style modifier to transformation
+        switch (styleSelect.value) {
+            case 'formal':
+                styledPrompt += ' Maintain a formal, professional tone in the output.';
+                break;
+            case 'conversational':
+                styledPrompt += ' Use a natural, conversational tone in the output.';
+                break;
+            case 'academic':
+                styledPrompt += ' Maintain an academic, scholarly tone in the output.';
+                break;
+            case 'creative':
+                styledPrompt += ' Use creative and engaging language in the output.';
+                break;
+            case 'technical':
+                styledPrompt += ' Maintain technical accuracy and appropriate terminology.';
+                break;
+        }
+        
+        styledPrompt += ' Provide only the transformed text, do not include the original text or explanations.';
+        return styledPrompt;
     }
 
     debugSystemPrompt() {
@@ -901,7 +1009,9 @@ class TranslationMachine {
         this.translationState.sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
         this.translationState.config = {
             model: document.getElementById('modelSelect').value,
+            mode: document.getElementById('translationMode').value,
             style: document.getElementById('styleSelect').value,
+            transformationType: document.getElementById('transformationType').value,
             systemPrompt: document.getElementById('systemPrompt').value
         };
 
@@ -1179,14 +1289,24 @@ class TranslationMachine {
             console.log('Using corrected prompt:', systemPrompt);
         }
         
+        // Check current mode to determine user message format
+        const mode = document.getElementById('translationMode').value;
+        let userMessage;
+        
+        if (mode === 'transform') {
+            userMessage = `TRANSFORM THIS TEXT: ${text}`;
+        } else {
+            userMessage = `TRANSLATE TO ENGLISH: ${text}`;
+        }
+
         // Create the API request body
         const requestBody = {
             model: model,
             messages: [
                 { role: 'system', content: systemPrompt },
-                { role: 'user', content: `TRANSLATE TO ENGLISH: ${text}` }
+                { role: 'user', content: userMessage }
             ],
-            temperature: 0.1, // Lower temperature for more consistent translation
+            temperature: mode === 'transform' ? 0.3 : 0.1, // Slightly higher temp for transformation creativity
             max_tokens: this.getMaxTokensForModel(model, text)
         };
 
@@ -1645,8 +1765,16 @@ IMPORTANT: Your response must be in English language only. Do not include any Po
     getExportFilename(extension) {
         const baseName = this.currentFile ? 
             this.currentFile.name.replace(/\.[^/.]+$/, '') : 
-            'translation';
-        return `${baseName}-english.${extension}`;
+            'document';
+        
+        const mode = document.getElementById('translationMode').value;
+        if (mode === 'transform') {
+            const transformationType = document.getElementById('transformationType').value;
+            const transformName = transformationType.replace('-', '_');
+            return `${baseName}-transformed_${transformName}.${extension}`;
+        } else {
+            return `${baseName}-english.${extension}`;
+        }
     }
 
     downloadBlob(blob, filename) {

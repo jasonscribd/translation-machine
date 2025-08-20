@@ -362,6 +362,52 @@ body {
     color: #dc2626;
 }
 
+/* Transformation Direction */
+.transformation-direction-container {
+    transition: all 0.3s ease;
+}
+
+.transformation-direction-container select {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: 1px solid #667eea;
+}
+
+.transformation-direction-container select:focus {
+    border-color: #4f46e5;
+    box-shadow: 0 0 0 3px rgba(103, 126, 234, 0.1);
+}
+
+.transformation-direction-container .help-text {
+    color: #6366f1;
+    font-weight: 500;
+}
+
+/* Mode selector styling */
+#translationMode {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: white;
+    font-weight: 600;
+    border: 1px solid #f093fb;
+}
+
+#translationMode:focus {
+    border-color: #ec4899;
+    box-shadow: 0 0 0 3px rgba(240, 147, 251, 0.1);
+}
+
+/* Transform button styling */
+.btn:has(.fa-magic) {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+}
+
+.btn:has(.fa-magic):hover {
+    background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+}
+
 .prompt-section {
     margin-bottom: var(--spacing-xl);
 }

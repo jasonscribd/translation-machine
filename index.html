@@ -35,7 +35,7 @@
                     <div class="upload-content">
                         <i class="fas fa-cloud-upload-alt upload-icon"></i>
                         <h2>Upload Document</h2>
-                        <p>Translate any language to English - TXT, PDF, and EPUB files supported</p>
+                        <p>Translate to English or transform English text - TXT, PDF, and EPUB files supported</p>
                         <input type="file" id="fileInput" accept=".txt,.pdf,.epub" hidden>
                         <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
                             Choose File
@@ -84,6 +84,15 @@
                     </div>
 
                     <div class="config-item">
+                        <label for="translationMode">Mode</label>
+                        <select id="translationMode">
+                            <option value="translate">Translation Mode</option>
+                            <option value="transform">English Transformation Mode</option>
+                        </select>
+                        <small class="help-text">Choose between translation or English text transformation</small>
+                    </div>
+
+                    <div class="config-item translation-direction-container" id="translationDirection">
                         <label>Translation Direction</label>
                         <div class="translation-direction">
                             <i class="fas fa-language"></i>
@@ -94,8 +103,25 @@
                         <small class="help-text">Automatically detects source language and translates to English</small>
                     </div>
 
+                    <div class="config-item transformation-direction-container" id="transformationDirection" style="display: none;">
+                        <label for="transformationType">Transformation Type</label>
+                        <select id="transformationType">
+                            <option value="shakespearean-modern">Shakespearean → Modern English</option>
+                            <option value="formal-casual">Formal → Conversational</option>
+                            <option value="complex-simple">Complex → Simple English</option>
+                            <option value="academic-plain">Academic → Plain Language</option>
+                            <option value="archaic-modern">Archaic → Modern English</option>
+                            <option value="legal-plain">Legal → Plain English</option>
+                            <option value="technical-layman">Technical → Layman's Terms</option>
+                            <option value="verbose-concise">Verbose → Concise</option>
+                            <option value="passive-active">Passive → Active Voice</option>
+                            <option value="custom-transform">Custom Transformation</option>
+                        </select>
+                        <small class="help-text">Choose how to transform your English text</small>
+                    </div>
+
                     <div class="config-item">
-                        <label for="styleSelect">Translation Style</label>
+                        <label for="styleSelect" id="styleSelectLabel">Style</label>
                         <select id="styleSelect">
                             <option value="formal">Formal</option>
                             <option value="conversational">Conversational</option>
