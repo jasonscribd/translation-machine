@@ -1375,9 +1375,11 @@ class TranslationMachine {
 
     async translateChunk(text) {
         const model = document.getElementById('modelSelect').value;
-        const systemPrompt = document.getElementById('systemPrompt').value;
+        const mode = document.getElementById('translationMode').value; // Get mode first!
+        let systemPrompt = document.getElementById('systemPrompt').value; // Changed to let for potential reassignment
         
         console.log('=== TRANSLATION DEBUG INFO ===');
+        console.log('Mode:', mode);
         console.log('Model:', model);
         console.log('System prompt being sent:', systemPrompt);
         console.log('Input text (first 200 chars):', text.substring(0, 200) + '...');
@@ -1413,7 +1415,6 @@ class TranslationMachine {
         }
         
         // Check current mode to determine user message format
-        const mode = document.getElementById('translationMode').value;
         let userMessage;
         
         if (mode === 'transform') {
