@@ -434,6 +434,24 @@ body {
     background: #d97706;
 }
 
+.prompt-help {
+    margin-top: var(--spacing-sm);
+}
+
+.custom-prompt-help {
+    color: #667eea;
+    font-weight: 500;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--border-radius);
+    border-left: 3px solid #667eea;
+}
+
+.custom-prompt-help i {
+    color: #667eea;
+    margin-right: var(--spacing-xs);
+}
+
 .prompt-status {
     margin-top: var(--spacing-sm);
     padding: var(--spacing-sm);

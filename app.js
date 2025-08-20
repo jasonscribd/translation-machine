@@ -136,6 +136,23 @@ class TranslationMachine {
         document.getElementById('newTranslationBtn').style.display = 'none';
     }
 
+    showPromptHelp(message) {
+        const promptHelp = document.getElementById('promptHelp');
+        const promptHelpText = document.getElementById('promptHelpText');
+        
+        if (promptHelp && promptHelpText) {
+            promptHelpText.textContent = message;
+            promptHelp.style.display = 'block';
+        }
+    }
+
+    hidePromptHelp() {
+        const promptHelp = document.getElementById('promptHelp');
+        if (promptHelp) {
+            promptHelp.style.display = 'none';
+        }
+    }
+
     async checkForSavedSessions() {
         // Check if we should clear data from a previous session
         const shouldClear = localStorage.getItem('translation-machine-should-clear');
@@ -775,20 +792,28 @@ class TranslationMachine {
         const styleSelect = document.getElementById('styleSelect');
         const promptTextarea = document.getElementById('systemPrompt');
         const mode = document.getElementById('translationMode').value;
+        const transformationType = document.getElementById('transformationType').value;
         
         console.log('=== SYSTEM PROMPT UPDATE ===');
         console.log('Mode:', mode);
         console.log('Style selected:', styleSelect.value);
+        if (mode === 'transform') {
+            console.log('Transformation type:', transformationType);
+        }
         
-        if (styleSelect.value !== 'custom' && (mode === 'translate' || styleSelect.value !== 'custom')) {
+        // Check if we should use a preset or keep custom prompt
+        const isCustomStyle = styleSelect.value === 'custom';
+        const isCustomTransform = mode === 'transform' && transformationType === 'custom-transform';
+        
+        if (!isCustomStyle && !isCustomTransform) {
+            // Use preset prompts
             let template;
             
             if (mode === 'transform') {
                 // Use transformation presets
                 template = this.getTransformationPrompt();
                 if (!template) {
-                    // Custom transformation - don't override user's custom prompt
-                    console.log('Custom transformation selected - keeping user prompt');
+                    console.error('No transformation template found for type:', transformationType);
                     return;
                 }
             } else {
@@ -814,7 +839,34 @@ class TranslationMachine {
                 console.log('Transformation prompt ready');
             }
         } else {
+            // Custom prompt - don't override user's input
+            if (isCustomTransform) {
+                console.log('Custom transformation selected - user can write custom transformation prompt');
+                // Show helpful guidance for custom transformation
+                this.showPromptHelp('Write your custom transformation instructions. Example: "Rewrite this text to sound like a pirate would say it, using nautical terms and expressions."');
+                
+                // If the textarea is empty, provide a helpful starting template
+                if (!promptTextarea.value.trim()) {
+                    promptTextarea.value = 'Transform the following English text as requested. Provide only the transformed text, do not include the original text or explanations.';
+                    console.log('Set default custom transformation prompt');
+                }
+            } else {
+                console.log('Custom style selected - user can write custom translation prompt');
+                // Show helpful guidance for custom translation
+                this.showPromptHelp('Write your custom translation instructions. You can specify tone, formality, or special handling requirements.');
+                
+                // If the textarea is empty, provide a helpful starting template
+                if (!promptTextarea.value.trim()) {
+                    promptTextarea.value = 'You are a professional translator. Translate the following text from its original language to English. Provide ONLY the English translation, do not include the original text.';
+                    console.log('Set default custom translation prompt');
+                }
+            }
             console.log('Using custom prompt:', promptTextarea.value);
+        }
+        
+        // Hide prompt help if not using custom prompts
+        if (!isCustomStyle && !isCustomTransform) {
+            this.hidePromptHelp();
         }
         
         // Update cost estimate when prompt changes
@@ -831,6 +883,7 @@ class TranslationMachine {
         const transformationDirection = document.getElementById('transformationDirection');
         const styleLabel = document.getElementById('styleSelectLabel');
         const translateBtn = document.getElementById('translateBtn');
+        const promptTextarea = document.getElementById('systemPrompt');
         
         console.log('Mode changed to:', mode);
         
@@ -841,8 +894,9 @@ class TranslationMachine {
             styleLabel.textContent = 'Transformation Style';
             translateBtn.innerHTML = '<i class="fas fa-magic"></i> Start Transformation';
             
-            // Update page title and header for transformation mode
+            // Update page title and placeholder for transformation mode
             document.title = 'Translation Machine - Text Transformation';
+            promptTextarea.placeholder = 'Custom system prompt for transformation...';
         } else {
             // Show translation options, hide transformation direction
             translationDirection.style.display = 'block';
@@ -850,12 +904,18 @@ class TranslationMachine {
             styleLabel.textContent = 'Translation Style';
             translateBtn.innerHTML = '<i class="fas fa-play"></i> Start Translation';
             
-            // Restore original title for translation mode
+            // Restore original title and placeholder for translation mode
             document.title = 'Translation Machine - Translate to English';
+            promptTextarea.placeholder = 'Custom system prompt for translation...';
         }
         
         // Update system prompt based on new mode
         this.updateSystemPrompt();
+        
+        // Update cost estimate when mode changes
+        if (this.currentText) {
+            this.updateCostEstimate();
+        }
     }
 
     getTransformationPrompt() {
@@ -901,41 +961,76 @@ class TranslationMachine {
         const promptStatus = document.getElementById('promptStatus');
         const promptStatusText = document.getElementById('promptStatusText');
         const currentPrompt = promptTextarea.value;
+        const mode = document.getElementById('translationMode').value;
         
         console.log('=== SYSTEM PROMPT DEBUG ===');
+        console.log('Current mode:', mode);
         console.log('Current prompt:', currentPrompt);
         
         const issues = [];
         const suggestions = [];
         
-        // Check if prompt contains "English"
-        if (!currentPrompt.toLowerCase().includes('english')) {
-            issues.push('❌ Prompt does not mention "English" as target language');
-            suggestions.push('Add "to English" or "in English"');
+        if (mode === 'transform') {
+            // Transformation mode checks
+            console.log('Debugging transformation prompt...');
+            
+            // Check if prompt contains transformation instructions
+            if (!currentPrompt.toLowerCase().includes('transform') && !currentPrompt.toLowerCase().includes('rewrite') && !currentPrompt.toLowerCase().includes('convert')) {
+                issues.push('❌ Prompt does not contain transformation instruction');
+                suggestions.push('Add "transform", "rewrite", or "convert" instruction');
+            } else {
+                console.log('✅ Prompt contains transformation instruction');
+            }
+            
+            // Check if prompt says not to include original
+            if (!currentPrompt.toLowerCase().includes('only') || !currentPrompt.toLowerCase().includes('not include')) {
+                issues.push('❌ Prompt may allow original text in response');
+                suggestions.push('Add "Provide only the transformed text, do not include the original text"');
+            } else {
+                console.log('✅ Prompt instructs to exclude original text');
+            }
+            
+            // Check for clear transformation goal
+            if (!currentPrompt.toLowerCase().includes('following') && !currentPrompt.toLowerCase().includes('text')) {
+                issues.push('❌ Prompt may not clearly reference the text to transform');
+                suggestions.push('Add "Transform the following text" or similar');
+            } else {
+                console.log('✅ Prompt clearly references text to transform');
+            }
+            
         } else {
-            console.log('✅ Prompt contains "English"');
-        }
-        
-        // Check if prompt says "translate"
-        if (!currentPrompt.toLowerCase().includes('translate')) {
-            issues.push('❌ Prompt does not contain "translate" instruction');
-            suggestions.push('Add translation instruction');
-        } else {
-            console.log('✅ Prompt contains translation instruction');
-        }
-        
-        // Check for problematic language mentions
-        if (currentPrompt.toLowerCase().includes('portuguese') || currentPrompt.toLowerCase().includes('português')) {
-            issues.push('❌ Prompt mentions Portuguese as target (should only be source)');
-            suggestions.push('Remove Portuguese as target language');
-        }
-        
-        // Check if prompt says not to include original
-        if (!currentPrompt.toLowerCase().includes('only') || !currentPrompt.toLowerCase().includes('not include')) {
-            issues.push('❌ Prompt may allow original text in response');
-            suggestions.push('Add "Provide ONLY the English translation, do not include the original text"');
-        } else {
-            console.log('✅ Prompt instructs to exclude original text');
+            // Translation mode checks (original logic)
+            console.log('Debugging translation prompt...');
+            
+            // Check if prompt contains "English"
+            if (!currentPrompt.toLowerCase().includes('english')) {
+                issues.push('❌ Prompt does not mention "English" as target language');
+                suggestions.push('Add "to English" or "in English"');
+            } else {
+                console.log('✅ Prompt contains "English"');
+            }
+            
+            // Check if prompt says "translate"
+            if (!currentPrompt.toLowerCase().includes('translate')) {
+                issues.push('❌ Prompt does not contain "translate" instruction');
+                suggestions.push('Add translation instruction');
+            } else {
+                console.log('✅ Prompt contains translation instruction');
+            }
+            
+            // Check for problematic language mentions
+            if (currentPrompt.toLowerCase().includes('portuguese') || currentPrompt.toLowerCase().includes('português')) {
+                issues.push('❌ Prompt mentions Portuguese as target (should only be source)');
+                suggestions.push('Remove Portuguese as target language');
+            }
+            
+            // Check if prompt says not to include original
+            if (!currentPrompt.toLowerCase().includes('only') || !currentPrompt.toLowerCase().includes('not include')) {
+                issues.push('❌ Prompt may allow original text in response');
+                suggestions.push('Add "Provide ONLY the English translation, do not include the original text"');
+            } else {
+                console.log('✅ Prompt instructs to exclude original text');
+            }
         }
         
         console.log('Issues found:', issues);
@@ -946,12 +1041,15 @@ class TranslationMachine {
             promptStatusText.innerHTML = `<strong>Issues found:</strong><br>${issues.join('<br>')}<br><br><strong>Suggestions:</strong><br>${suggestions.join('<br>')}`;
             
             // Offer to fix automatically
-            if (confirm('Issues found with system prompt. Would you like to automatically fix it?')) {
+            if (confirm(`Issues found with system prompt. Would you like to automatically fix it for ${mode} mode?`)) {
                 this.fixSystemPrompt();
             }
         } else {
             promptStatus.style.display = 'block';
-            promptStatusText.innerHTML = '✅ System prompt looks good for English translation!';
+            const successMessage = mode === 'transform' 
+                ? '✅ System prompt looks good for text transformation!'
+                : '✅ System prompt looks good for English translation!';
+            promptStatusText.innerHTML = successMessage;
             setTimeout(() => {
                 promptStatus.style.display = 'none';
             }, 3000);
@@ -962,7 +1060,14 @@ class TranslationMachine {
 
     fixSystemPrompt() {
         const promptTextarea = document.getElementById('systemPrompt');
-        const fixedPrompt = 'You are a professional translator. Translate the following text from its original language to English. Use a formal, professional tone. Provide ONLY the English translation, do not include the original text. The output must be in English.';
+        const mode = document.getElementById('translationMode').value;
+        
+        let fixedPrompt;
+        if (mode === 'transform') {
+            fixedPrompt = 'Transform the following English text as requested. Provide only the transformed text, do not include the original text or explanations.';
+        } else {
+            fixedPrompt = 'You are a professional translator. Translate the following text from its original language to English. Use a formal, professional tone. Provide ONLY the English translation, do not include the original text. The output must be in English.';
+        }
         
         promptTextarea.value = fixedPrompt;
         console.log('System prompt fixed to:', fixedPrompt);
@@ -970,11 +1075,18 @@ class TranslationMachine {
         const promptStatus = document.getElementById('promptStatus');
         const promptStatusText = document.getElementById('promptStatusText');
         promptStatus.style.display = 'block';
-        promptStatusText.innerHTML = '✅ System prompt has been fixed for English translation!';
+        
+        const modeText = mode === 'transform' ? 'text transformation' : 'English translation';
+        promptStatusText.innerHTML = `✅ System prompt has been fixed for ${modeText}!`;
         
         setTimeout(() => {
             promptStatus.style.display = 'none';
         }, 3000);
+        
+        // Update cost estimate after fixing
+        if (this.currentText) {
+            this.updateCostEstimate();
+        }
     }
 
     // Rough token estimation (approximate)
